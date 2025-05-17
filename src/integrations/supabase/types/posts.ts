@@ -1,7 +1,7 @@
 
-import { Tables } from "@/integrations/supabase/types";
+import { Database } from "@/integrations/supabase/types";
 
-export interface Post extends Tables<'posts'> {
+export interface Post {
   id: string;
   title: string;
   content: string;
@@ -19,7 +19,7 @@ export interface PostInsert {
   user_id?: string;
 }
 
-// Make sure Tables includes "posts" type by augmenting the existing type
+// Extend the existing Database interface to include the posts table
 declare module '@/integrations/supabase/types' {
   interface Database {
     public: {
@@ -28,7 +28,7 @@ declare module '@/integrations/supabase/types' {
           Row: Post;
           Insert: PostInsert;
           Update: Partial<PostInsert>;
-        }
+        } & Database['public']['Tables']
       }
     }
   }
