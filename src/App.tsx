@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AnimatePresence } from "framer-motion";
 import Layout from "./components/Layout";
 import GeneratePage from "./pages/GeneratePage";
 import PostsPage from "./pages/PostsPage";
@@ -19,13 +20,15 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Layout><GeneratePage /></Layout>} />
-          <Route path="/posts" element={<Layout><PostsPage /></Layout>} />
-          <Route path="/calendar" element={<Layout><CalendarPage /></Layout>} />
-          <Route path="/trends" element={<Layout><TrendsPage /></Layout>} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AnimatePresence mode="wait">
+          <Routes>
+            <Route path="/" element={<Layout><GeneratePage /></Layout>} />
+            <Route path="/posts" element={<Layout><PostsPage /></Layout>} />
+            <Route path="/calendar" element={<Layout><CalendarPage /></Layout>} />
+            <Route path="/trends" element={<Layout><TrendsPage /></Layout>} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AnimatePresence>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
