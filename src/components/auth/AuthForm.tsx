@@ -1,10 +1,10 @@
-
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from 'react-router-dom';
 
 interface AuthFormProps {
   type: 'login' | 'signup';
@@ -19,12 +19,41 @@ const AuthForm: React.FC<AuthFormProps> = ({ type, onSuccess, onChangeType }) =>
   const [company, setCompany] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
+
+  // Helper function to clean up any existing auth state
+  const cleanupAuthState = () => {
+    // Remove standard auth tokens
+    localStorage.removeItem('supabase.auth.token');
+    // Remove all Supabase auth keys from localStorage
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith('supabase.auth.') || key.includes('sb-')) {
+        localStorage.removeItem(key);
+      }
+    });
+    // Remove from sessionStorage if in use
+    Object.keys(sessionStorage || {}).forEach((key) => {
+      if (key.startsWith('supabase.auth.') || key.includes('sb-')) {
+        sessionStorage.removeItem(key);
+      }
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     
     try {
+      // Clean up existing auth state before attempting login/signup
+      cleanupAuthState();
+      
+      // Attempt global sign out before new sign in
+      try {
+        await supabase.auth.signOut({ scope: 'global' });
+      } catch (err) {
+        // Continue even if this fails
+      }
+      
       if (type === 'signup') {
         const { data, error } = await supabase.auth.signUp({
           email,
@@ -43,8 +72,22 @@ const AuthForm: React.FC<AuthFormProps> = ({ type, onSuccess, onChangeType }) =>
           title: "Account created successfully!",
           description: "Please check your email for verification."
         });
-        onSuccess();
+        
+        // In development, you might want to automatically sign in after signup
+        // since email verification might be turned off
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+        
+        if (!signInError && signInData.user) {
+          // Force page reload to refresh auth state
+          window.location.href = '/dashboard';
+        } else {
+          onSuccess();
+        }
       } else {
+        // Login
         const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password
@@ -56,7 +99,9 @@ const AuthForm: React.FC<AuthFormProps> = ({ type, onSuccess, onChangeType }) =>
           title: "Logged in successfully!",
           description: "Welcome back to LinkedCraft."
         });
-        onSuccess();
+        
+        // Redirect to dashboard with page reload for clean state
+        window.location.href = '/dashboard';
       }
     } catch (error: any) {
       toast({

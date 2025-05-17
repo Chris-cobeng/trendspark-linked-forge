@@ -17,6 +17,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   
   useEffect(() => {
     if (!loading && !user) {
+      console.log("No user found, redirecting to home");
       navigate('/');
     }
   }, [user, loading, navigate]);

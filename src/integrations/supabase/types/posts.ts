@@ -28,8 +28,8 @@ declare module '@/integrations/supabase/types' {
           Row: Post;
           Insert: PostInsert;
           Update: Partial<PostInsert>;
-        } & Database['public']['Tables']
-      }
+        };
+      } & Database['public']['Tables']
     }
   }
 }

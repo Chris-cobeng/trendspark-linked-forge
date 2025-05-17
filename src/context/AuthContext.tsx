@@ -26,6 +26,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Set up the auth state listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, currentSession) => {
+        console.log("Auth state change event:", event);
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
         setLoading(false);
@@ -34,6 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Then check for existing session
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      console.log("Current session:", currentSession ? "exists" : "none");
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
       setLoading(false);
@@ -45,7 +47,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    // Clean up auth state
+    const cleanupAuthState = () => {
+      // Remove standard auth tokens
+      localStorage.removeItem('supabase.auth.token');
+      // Remove all Supabase auth keys from localStorage
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('supabase.auth.') || key.includes('sb-')) {
+          localStorage.removeItem(key);
+        }
+      });
+      // Remove from sessionStorage if in use
+      Object.keys(sessionStorage || {}).forEach((key) => {
+        if (key.startsWith('supabase.auth.') || key.includes('sb-')) {
+          sessionStorage.removeItem(key);
+        }
+      });
+    };
+
+    try {
+      cleanupAuthState();
+      
+      // Global sign out
+      await supabase.auth.signOut({ scope: 'global' });
+      
+      // Force page reload for a clean state
+      window.location.href = '/';
+    } catch (error) {
+      console.error("Sign out error:", error);
+      // Still redirect even if there's an error
+      window.location.href = '/';
+    }
   };
 
   return (
