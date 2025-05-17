@@ -20,6 +20,9 @@ const config: Config = {
     extend: {
       colors: {
         linkedBlue: "#0077B5",
+        linkedBlueDark: "#005582",
+        accentPink: "#FF69B4",
+        "accentPink-light": "#FFB6C1",
         sidebar: "#ffffff",
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React from 'react';
+import { motion } from 'framer-motion';
 import { 
   Dialog, 
   DialogContent, 
@@ -28,18 +28,23 @@ const AuthModal: React.FC<AuthModalProps> = ({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-center text-2xl font-bold">
+          <DialogTitle className="text-center text-2xl font-bold bg-gradient-to-r from-linkedBlue to-accentPink bg-clip-text text-transparent">
             {type === 'login' ? 'Log In to LinkedCraft' : 'Create Your LinkedCraft Account'}
           </DialogTitle>
         </DialogHeader>
         
-        <div className="py-4">
+        <motion.div 
+          className="py-4"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
           <AuthForm 
             type={type} 
             onSuccess={onSuccess}
             onChangeType={onChangeType}
           />
-        </div>
+        </motion.div>
       </DialogContent>
     </Dialog>
   );
