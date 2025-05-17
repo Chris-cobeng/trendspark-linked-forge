@@ -91,6 +91,12 @@ const config: Config = {
     },
   },
   plugins: [require("tailwindcss-animate")],
+  safelist: [
+    'bg-linkedBlue',
+    'hover:bg-linkedBlue-dark',
+    'from-accentPink', 
+    'to-accentPink-light'
+  ],
 };
 
 export default config;

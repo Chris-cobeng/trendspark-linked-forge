@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import {
   Card,
@@ -51,17 +52,21 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from "@/integrations/supabase/client";
-import { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { useToast } from "@/hooks/use-toast";
+import { Post as PostType } from '@/integrations/supabase/types/posts';
 
-// Define a type for the post object
-type Post = Tables<'posts'>;
+type NewPost = {
+  title: string;
+  content: string;
+  status: 'saved' | 'scheduled';
+  scheduled_at: string | null;
+};
 
 const PostsPage: React.FC = () => {
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [posts, setPosts] = useState<PostType[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();
-  const [newPost, setNewPost] = useState<TablesInsert<'posts'>>({
+  const [newPost, setNewPost] = useState<NewPost>({
     title: '',
     content: '',
     status: 'saved',
@@ -75,12 +80,10 @@ const PostsPage: React.FC = () => {
     const fetchPosts = async () => {
       setLoading(true);
       try {
-        let query = supabase
-          .from('posts')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        const currentFilter = (searchParams.get('filter') as "saved" | "scheduled") || 'saved';
+        const currentFilter = (searchParams.get('filter') as "saved" | "scheduled" | null) || 'saved';
+        
+        let query = supabase.from('posts').select('*').order('created_at', { ascending: false });
+        
         if (currentFilter !== 'all') {
           query = query.eq('status', currentFilter);
         }
@@ -95,7 +98,7 @@ const PostsPage: React.FC = () => {
             variant: "destructive",
           });
         } else {
-          setPosts(data || []);
+          setPosts(data as PostType[] || []);
         }
       } finally {
         setLoading(false);
@@ -103,7 +106,7 @@ const PostsPage: React.FC = () => {
     };
 
     fetchPosts();
-  }, [searchParams]);
+  }, [searchParams, toast]);
 
   const handleFilterChange = (filter: string) => {
     setSearchParams({ filter });
@@ -123,7 +126,7 @@ const PostsPage: React.FC = () => {
       const { data, error } = await supabase
         .from('posts')
         .insert([newPost])
-        .select()
+        .select();
 
       if (error) {
         console.error('Error creating post:', error);
@@ -133,7 +136,7 @@ const PostsPage: React.FC = () => {
           variant: "destructive",
         });
       } else {
-        setPosts(prev => [data[0], ...prev]);
+        setPosts(prev => [data[0] as PostType, ...prev]);
         setNewPost({
           title: '',
           content: '',
