@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import Layout from "./components/Layout";
+import Home from "./pages/Home";
 import GeneratePage from "./pages/GeneratePage";
 import PostsPage from "./pages/PostsPage";
 import CalendarPage from "./pages/CalendarPage";
@@ -22,7 +23,8 @@ const App = () => (
       <BrowserRouter>
         <AnimatePresence mode="wait">
           <Routes>
-            <Route path="/" element={<Layout><GeneratePage /></Layout>} />
+            <Route path="/" element={<Home />} />
+            <Route path="/dashboard" element={<Layout><GeneratePage /></Layout>} />
             <Route path="/posts" element={<Layout><PostsPage /></Layout>} />
             <Route path="/calendar" element={<Layout><CalendarPage /></Layout>} />
             <Route path="/trends" element={<Layout><TrendsPage /></Layout>} />
