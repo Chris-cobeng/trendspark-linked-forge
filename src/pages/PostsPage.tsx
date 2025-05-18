@@ -54,40 +54,52 @@ const PostsPage: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
+  const currentFilter = searchParams.get('filter') || 'saved';
 
   useEffect(() => {
-    const fetchPosts = async () => {
-      if (!user) return;
+    if (user) {
+      fetchPosts(currentFilter);
+    } else {
+      setPosts([]);
+      setLoading(false);
+    }
+  }, [currentFilter, user]);
+
+  const fetchPosts = async (filter: string) => {
+    setLoading(true);
+    try {
+      let query = supabase.from('posts')
+        .select('*')
+        .eq('user_id', user?.id)
+        .order('created_at', { ascending: false });
       
-      setLoading(true);
-      try {
-        const currentFilter = searchParams.get('filter') || 'saved';
-        
-        let query = supabase.from('posts').select('*').order('created_at', { ascending: false });
-        
-        if (currentFilter !== 'all') {
-          query = query.eq('status', currentFilter);
-        }
-
-        const { data, error } = await query;
-
-        if (error) {
-          console.error('Error fetching posts:', error);
-          toast({
-            title: "Error!",
-            description: "Failed to load posts",
-            variant: "destructive",
-          });
-        } else {
-          setPosts(data as PostType[] || []);
-        }
-      } finally {
-        setLoading(false);
+      if (filter !== 'all') {
+        query = query.eq('status', filter);
       }
-    };
 
-    fetchPosts();
-  }, [searchParams, toast, user]);
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error fetching posts:', error);
+        toast({
+          title: "Error!",
+          description: "Failed to load posts",
+          variant: "destructive",
+        });
+      } else {
+        setPosts(data as PostType[] || []);
+      }
+    } catch (error) {
+      console.error('Unexpected error fetching posts:', error);
+      toast({
+        title: "Error!",
+        description: "An unexpected error occurred while loading posts",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleFilterChange = (filter: string) => {
     setSearchParams({ filter });
@@ -220,6 +232,17 @@ const PostsPage: React.FC = () => {
     }
   };
 
+  // If user is not logged in, redirect to login
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center p-10">
+        <h2 className="text-2xl font-bold mb-4">Login Required</h2>
+        <p className="text-grayScale-500 mb-4">You need to be logged in to view and manage your posts.</p>
+        <Button onClick={() => navigate("/")}>Go to Login</Button>
+      </div>
+    );
+  }
+
   return (
     <div>
       <Card>
@@ -229,7 +252,7 @@ const PostsPage: React.FC = () => {
         </CardHeader>
         <CardContent>
           <div className="flex justify-between items-center mb-4">
-            <Select onValueChange={handleFilterChange} defaultValue={searchParams.get('filter') || 'saved'}>
+            <Select defaultValue={currentFilter} onValueChange={handleFilterChange}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Filter by Status" />
               </SelectTrigger>
@@ -250,7 +273,7 @@ const PostsPage: React.FC = () => {
                     Create a new post to be saved or scheduled.
                   </DrawerDescription>
                 </DrawerHeader>
-                <div className="grid gap-4 py-4">
+                <div className="grid gap-4 py-4 px-4">
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="title" className="text-right">
                       Title
@@ -283,6 +306,7 @@ const PostsPage: React.FC = () => {
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button
+                          id="scheduled_at"
                           variant={"outline"}
                           className={cn(
                             "w-[240px] pl-3 text-left font-normal",
@@ -313,12 +337,21 @@ const PostsPage: React.FC = () => {
                 </div>
                 <DrawerFooter>
                   <Button onClick={handleCreatePost}>Create Post</Button>
+                  <DrawerClose asChild>
+                    <Button variant="outline">Cancel</Button>
+                  </DrawerClose>
                 </DrawerFooter>
               </DrawerContent>
             </Drawer>
           </div>
           {loading ? (
-            <p>Loading posts...</p>
+            <div className="flex justify-center items-center p-8">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-linkedBlue border-t-transparent"></div>
+            </div>
+          ) : posts.length === 0 ? (
+            <div className="text-center p-8">
+              <p className="text-grayScale-500">No posts found. Create a new post to get started.</p>
+            </div>
           ) : (
             <Table>
               <TableCaption>A list of your recent posts.</TableCaption>

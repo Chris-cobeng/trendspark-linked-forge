@@ -12,6 +12,7 @@ interface TopicOption {
   label: string;
   icon: string;
   trending?: boolean;
+  description?: string;
 }
 
 interface TopicSelectorProps {
@@ -40,28 +41,31 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
     }
   }, [showSuggestions]);
 
-  // Function to fetch trending topics using AI
+  // Function to fetch trending topics from LinkedIn API
   const fetchTrendingTopics = async () => {
     setLoadingSuggestions(true);
     
     try {
-      // This would normally come from a Rapid API or similar service
-      // For now, we'll use our OpenAI Edge Function to generate topics
-      const { data, error } = await supabase.functions.invoke('generate-linkedin-post', {
-        body: {
-          topic: 'trending LinkedIn topics for professionals in 2025',
-          postType: 'list',
-        },
-      });
+      // Fetch trend data from our Supabase edge function
+      const { data, error } = await supabase.functions.invoke('linkedin-trends');
       
       if (error) throw error;
       
-      // Parse the AI response to extract topics
-      // This is a simple extraction - in production we'd use more sophisticated parsing
-      const topicText = data.content;
-      const topics = extractTopicsFromAIResponse(topicText);
-      
-      setTrendingTopics(topics);
+      // Transform the trend data into topic options
+      if (data && data.trends && data.trends.length > 0) {
+        const topicOptions: TopicOption[] = data.trends.map((trend: any) => ({
+          id: trend.id,
+          label: trend.topic,
+          icon: getIconForTopic(trend.topic),
+          trending: true,
+          description: trend.description
+        }));
+        
+        setTrendingTopics(topicOptions);
+      } else {
+        // Fallback to default topics if no trends were found
+        setTrendingTopics(getDefaultTopics());
+      }
     } catch (error) {
       console.error('Error fetching trending topics:', error);
       toast({
@@ -77,44 +81,6 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
     }
   };
   
-  // Extract topics from AI response
-  const extractTopicsFromAIResponse = (text: string): TopicOption[] => {
-    try {
-      // Simple extraction logic - look for numbered or bulleted lists
-      // In production, we'd ask the AI for a structured response
-      const lines = text.split('\n').filter(line => line.trim());
-      const topicRegex = /(?:\d+\.|\*|-)\s*([\w\s]+)/;
-      
-      const extractedTopics: TopicOption[] = [];
-      let id = 1;
-      
-      for (const line of lines) {
-        const match = line.match(topicRegex);
-        if (match && match[1]) {
-          const topic = match[1].trim();
-          if (topic && !extractedTopics.some(t => t.label.toLowerCase() === topic.toLowerCase())) {
-            extractedTopics.push({
-              id: id++,
-              label: topic,
-              icon: getIconForTopic(topic),
-              trending: true
-            });
-          }
-        }
-      }
-      
-      // If we couldn't extract enough topics, add some defaults
-      if (extractedTopics.length < 3) {
-        return [...extractedTopics, ...getDefaultTopics().slice(0, 6 - extractedTopics.length)];
-      }
-      
-      return extractedTopics.slice(0, 6); // Limit to 6 topics
-    } catch (e) {
-      console.error('Error extracting topics:', e);
-      return getDefaultTopics();
-    }
-  };
-  
   // Get an icon for a topic based on its content
   const getIconForTopic = (topic: string): string => {
     const topicLower = topic.toLowerCase();
@@ -126,17 +92,21 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
     if (topicLower.includes('balance') || topicLower.includes('wellness')) return '⚖️';
     if (topicLower.includes('growth') || topicLower.includes('learning')) return '📈';
     if (topicLower.includes('trend') || topicLower.includes('future')) return '🔮';
+    if (topicLower.includes('network') || topicLower.includes('connect')) return '🌐';
+    if (topicLower.includes('career') || topicLower.includes('job')) return '🧑‍💼';
+    if (topicLower.includes('content') || topicLower.includes('market')) return '📱';
+    if (topicLower.includes('data') || topicLower.includes('analytics')) return '📊';
     return '✨'; // Default icon
   };
   
   // Default topics if API fails
   const getDefaultTopics = (): TopicOption[] => [
-    { id: 1, label: 'Remote Work Trends', icon: '🏠', trending: true },
-    { id: 2, label: 'AI in Business', icon: '🤖', trending: true },
-    { id: 3, label: 'Personal Branding', icon: '👤', trending: true },
-    { id: 4, label: 'Leadership Skills', icon: '🚀', trending: false },
-    { id: 5, label: 'Digital Transformation', icon: '💻', trending: false },
-    { id: 6, label: 'Work-Life Balance', icon: '⚖️', trending: false },
+    { id: 1, label: 'Remote Work Strategies', icon: '🏠', trending: true, description: 'Effective approaches for remote work productivity' },
+    { id: 2, label: 'AI in Business Transformation', icon: '🤖', trending: true, description: 'How AI is reshaping business processes and strategy' },
+    { id: 3, label: 'Personal Branding for Executives', icon: '👤', trending: true, description: 'Building your professional brand as a leader' },
+    { id: 4, label: 'Leadership in Crisis Management', icon: '🚀', trending: false, description: 'Guiding teams through challenging situations' },
+    { id: 5, label: 'Digital Transformation Roadmap', icon: '💻', trending: false, description: 'Planning your organization\'s digital journey' },
+    { id: 6, label: 'Work-Life Integration Techniques', icon: '⚖️', trending: false, description: 'Modern approaches to balancing career and personal life' },
   ];
 
   const handleTopicClick = (topic: string) => {
@@ -194,7 +164,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
       </div>
 
       {showSuggestions && (
-        <div className="grid grid-cols-2 gap-2 mt-2 animate-fade-in sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 mt-2 animate-fade-in sm:grid-cols-2">
           {loadingSuggestions ? (
             <div className="col-span-full flex items-center justify-center p-8">
               <Loader2 className="h-6 w-6 animate-spin text-linkedBlue mr-2" />
@@ -209,17 +179,22 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
                 }`}
                 onClick={() => handleTopicClick(topic.label)}
               >
-                <CardContent className="p-3 flex items-center gap-2">
-                  <span className="text-xl">{topic.icon}</span>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium truncate">{topic.label}</p>
-                    {topic.trending && (
-                      <div className="flex items-center gap-1">
-                        <TrendingUp size={12} className="text-linkedBlue" />
-                        <span className="text-xs text-linkedBlue">Trending</span>
-                      </div>
-                    )}
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xl">{topic.icon}</span>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium truncate">{topic.label}</p>
+                      {topic.trending && (
+                        <div className="flex items-center gap-1">
+                          <TrendingUp size={12} className="text-linkedBlue" />
+                          <span className="text-xs text-linkedBlue">Trending</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
+                  {topic.description && (
+                    <p className="text-xs text-grayScale-500 line-clamp-2">{topic.description}</p>
+                  )}
                 </CardContent>
               </Card>
             ))

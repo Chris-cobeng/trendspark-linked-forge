@@ -9,6 +9,13 @@ import { useAuth } from '@/context/AuthContext';
 import { Post } from '@/integrations/supabase/types/posts';
 import { Loader2 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type PostType = 'insightful' | 'story' | 'callToAction';
 
@@ -26,7 +33,8 @@ interface LocationState {
 
 const GeneratePage: React.FC = () => {
   const [selectedTopic, setSelectedTopic] = useState<string>('');
-  const [posts, setPosts] = useState<GeneratedPost[]>([]);
+  const [selectedPostType, setSelectedPostType] = useState<PostType>('insightful');
+  const [generatedPost, setGeneratedPost] = useState<GeneratedPost | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
@@ -37,22 +45,26 @@ const GeneratePage: React.FC = () => {
     // Check if there's a selected topic from navigation (from Trends page)
     if (locationState?.selectedTopic) {
       setSelectedTopic(locationState.selectedTopic);
-      handleSelectTopic(locationState.selectedTopic);
       
       // Clear the location state to prevent regenerating on page refresh
       window.history.replaceState({}, document.title);
     }
   }, [locationState]);
 
-  const handleSelectTopic = async (topic: string) => {
-    setSelectedTopic(topic);
+  const handleGeneratePost = async () => {
+    if (!selectedTopic) {
+      toast({
+        title: "Topic Required",
+        description: "Please select a topic before generating a post",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsGenerating(true);
+    setGeneratedPost(null);
     
     try {
-      // Generate posts for all three types
-      const postTypes: PostType[] = ['insightful', 'story', 'callToAction'];
-      const generatedPosts: GeneratedPost[] = [];
-      
       // Get trending hashtags from our LinkedIn trends API function
       let trendingHashtags = ['#LinkedInTips', '#ProfessionalGrowth', '#LinkedCraft', '#CareerAdvice'];
       
@@ -70,50 +82,36 @@ const GeneratePage: React.FC = () => {
         // Continue with default hashtags if this fails
       }
       
-      // Generate each post type
-      for (let i = 0; i < postTypes.length; i++) {
-        const postType = postTypes[i];
-        
-        try {
-          const { data, error } = await supabase.functions.invoke('generate-linkedin-post', {
-            body: {
-              topic,
-              trendingHashtags,
-              postType,
-            },
-          });
-          
-          if (error) throw error;
-          
-          generatedPosts.push({
-            id: i + 1,
-            type: postType,
-            title: data.title,
-            content: data.content,
-            hashtags: data.hashtags,
-          });
-        } catch (error) {
-          console.error(`Error generating ${postType} post:`, error);
-          // Continue with other post types even if one fails
-        }
-      }
+      // Generate a post with the selected type
+      const { data, error } = await supabase.functions.invoke('generate-linkedin-post', {
+        body: {
+          topic: selectedTopic,
+          trendingHashtags,
+          postType: selectedPostType,
+        },
+      });
       
-      // If all posts failed to generate
-      if (generatedPosts.length === 0) {
-        throw new Error('Failed to generate posts');
-      }
+      if (error) throw error;
       
-      setPosts(generatedPosts);
+      const newPost: GeneratedPost = {
+        id: 1,
+        type: selectedPostType,
+        title: data.title,
+        content: data.content,
+        hashtags: data.hashtags,
+      };
+      
+      setGeneratedPost(newPost);
       
       toast({
-        title: "Posts Generated",
-        description: `${generatedPosts.length} posts created for topic: ${topic}`,
+        title: "Post Generated",
+        description: `A new ${selectedPostType} post was created for topic: ${selectedTopic}`,
       });
     } catch (error) {
-      console.error('Error generating posts:', error);
+      console.error('Error generating post:', error);
       toast({
         title: "Generation Failed",
-        description: "There was an error generating posts. Please try again.",
+        description: "There was an error generating your post. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -168,20 +166,48 @@ const GeneratePage: React.FC = () => {
         <div className="space-y-6">
           <div className="bg-white p-6 rounded-lg shadow-sm border">
             <h2 className="text-xl font-semibold mb-4">Select a Topic</h2>
-            <TopicSelector onSelectTopic={handleSelectTopic} initialTopic={selectedTopic} />
+            <TopicSelector onSelectTopic={setSelectedTopic} initialTopic={selectedTopic} />
           </div>
           
           {selectedTopic && (
             <div className="bg-white p-6 rounded-lg shadow-sm border animate-fade-in">
-              <h2 className="text-xl font-semibold mb-2">Selected Topic</h2>
-              <div className="flex items-center">
-                <span className="text-linkedBlue font-medium">{selectedTopic}</span>
-                {isGenerating && (
-                  <div className="ml-3 flex items-center">
-                    <div className="animate-spin h-4 w-4 border-2 border-linkedBlue border-t-transparent rounded-full mr-2"></div>
-                    <span className="text-sm text-grayScale-500">Generating...</span>
+              <h2 className="text-xl font-semibold mb-4">Post Options</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium block mb-2">Selected Topic</label>
+                  <div className="flex items-center">
+                    <span className="text-linkedBlue font-medium">{selectedTopic}</span>
                   </div>
-                )}
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium block mb-2">Post Type</label>
+                  <Select onValueChange={(value: PostType) => setSelectedPostType(value)} value={selectedPostType}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a post type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="insightful">Insightful Perspective</SelectItem>
+                      <SelectItem value="story">Personal Story</SelectItem>
+                      <SelectItem value="callToAction">Call to Action</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <Button 
+                  onClick={handleGeneratePost} 
+                  className="w-full gradient-btn" 
+                  disabled={isGenerating || !selectedTopic}
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Generating...
+                    </>
+                  ) : (
+                    'Generate Post'
+                  )}
+                </Button>
               </div>
             </div>
           )}
@@ -190,28 +216,26 @@ const GeneratePage: React.FC = () => {
         {/* Right Panel - Post Preview */}
         <div>
           <div className="bg-white p-6 rounded-lg shadow-sm border h-full">
-            <h2 className="text-xl font-semibold mb-4">Generated Posts</h2>
+            <h2 className="text-xl font-semibold mb-4">Generated Post</h2>
             
             {isGenerating ? (
               <div className="flex flex-col items-center justify-center h-64">
                 <Loader2 className="h-8 w-8 animate-spin text-linkedBlue mb-4" />
-                <p className="text-grayScale-500">Crafting engaging posts with AI...</p>
+                <p className="text-grayScale-500">Crafting an engaging post with AI...</p>
               </div>
-            ) : posts.length > 0 ? (
+            ) : generatedPost ? (
               <div className="space-y-4">
-                {posts.map((post) => (
-                  <PostCard
-                    key={post.id}
-                    title={post.title}
-                    content={post.content}
-                    hashtags={post.hashtags}
-                    onSave={() => handleSavePost(post)}
-                  />
-                ))}
+                <PostCard
+                  key={generatedPost.id}
+                  title={generatedPost.title}
+                  content={generatedPost.content}
+                  hashtags={generatedPost.hashtags}
+                  onSave={() => handleSavePost(generatedPost)}
+                />
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-64 text-grayScale-400">
-                <p>Select a topic to generate LinkedIn posts</p>
+                <p>Select a topic and post type, then click "Generate Post"</p>
               </div>
             )}
           </div>
