@@ -29,53 +29,57 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AnimatePresence mode="wait">
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route 
-              path="/dashboard" 
-              element={
-                <AuthGuard>
-                  <Layout><GeneratePage /></Layout>
-                </AuthGuard>
-              } 
-            />
-            <Route 
-              path="/posts" 
-              element={
-                <AuthGuard>
-                  <Layout><PostsPage /></Layout>
-                </AuthGuard>
-              } 
-            />
-            <Route 
-              path="/calendar" 
-              element={
-                <AuthGuard>
-                  <Layout><CalendarPage /></Layout>
-                </AuthGuard>
-              } 
-            />
-            <Route 
-              path="/trends" 
-              element={
-                <AuthGuard>
-                  <Layout><TrendsPage /></Layout>
-                </AuthGuard>
-              } 
-            />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </AnimatePresence>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+const App = () => {
+  const { user } = useAuth();
+  
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <AnimatePresence mode="wait">
+            <Routes>
+              <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Home />} />
+              <Route 
+                path="/dashboard" 
+                element={
+                  <AuthGuard>
+                    <Layout><GeneratePage /></Layout>
+                  </AuthGuard>
+                } 
+              />
+              <Route 
+                path="/posts" 
+                element={
+                  <AuthGuard>
+                    <Layout><PostsPage /></Layout>
+                  </AuthGuard>
+                } 
+              />
+              <Route 
+                path="/calendar" 
+                element={
+                  <AuthGuard>
+                    <Layout><CalendarPage /></Layout>
+                  </AuthGuard>
+                } 
+              />
+              <Route 
+                path="/trends" 
+                element={
+                  <AuthGuard>
+                    <Layout><TrendsPage /></Layout>
+                  </AuthGuard>
+                } 
+              />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </AnimatePresence>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;
