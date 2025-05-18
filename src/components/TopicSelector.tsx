@@ -16,14 +16,22 @@ interface TopicOption {
 
 interface TopicSelectorProps {
   onSelectTopic: (topic: string) => void;
+  initialTopic?: string;
 }
 
-const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic }) => {
-  const [customTopic, setCustomTopic] = useState('');
+const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTopic = '' }) => {
+  const [customTopic, setCustomTopic] = useState(initialTopic);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [trendingTopics, setTrendingTopics] = useState<TopicOption[]>([]);
   const { toast } = useToast();
+
+  useEffect(() => {
+    // If initial topic is provided, update the state
+    if (initialTopic) {
+      setCustomTopic(initialTopic);
+    }
+  }, [initialTopic]);
 
   useEffect(() => {
     // If suggestions are shown, load trending topics
