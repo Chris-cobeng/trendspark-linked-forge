@@ -33,40 +33,18 @@ import { format } from 'date-fns';
 import { cn } from "@/lib/utils"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { CalendarIcon } from "lucide-react"
-import { Switch } from "@/components/ui/switch"
-import { Slider } from "@/components/ui/slider"
-import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from "@/components/ui/drawer"
-import { Separator } from "@/components/ui/separator"
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer"
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Post as PostType } from '@/integrations/supabase/types/posts';
-
-type NewPost = {
-  title: string;
-  content: string;
-  status: 'saved' | 'scheduled';
-  scheduled_at: string | null;
-};
+import { Post as PostType, PostInsert } from '@/integrations/supabase/types/posts';
+import { useAuth } from '@/context/AuthContext';
 
 const PostsPage: React.FC = () => {
   const [posts, setPosts] = useState<PostType[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();
-  const [newPost, setNewPost] = useState<NewPost>({
+  const [newPost, setNewPost] = useState<PostInsert>({
     title: '',
     content: '',
     status: 'saved',
@@ -75,12 +53,15 @@ const PostsPage: React.FC = () => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   useEffect(() => {
     const fetchPosts = async () => {
+      if (!user) return;
+      
       setLoading(true);
       try {
-        const currentFilter = (searchParams.get('filter') as "saved" | "scheduled" | null) || 'saved';
+        const currentFilter = searchParams.get('filter') || 'saved';
         
         let query = supabase.from('posts').select('*').order('created_at', { ascending: false });
         
@@ -106,7 +87,7 @@ const PostsPage: React.FC = () => {
     };
 
     fetchPosts();
-  }, [searchParams, toast]);
+  }, [searchParams, toast, user]);
 
   const handleFilterChange = (filter: string) => {
     setSearchParams({ filter });
@@ -122,10 +103,24 @@ const PostsPage: React.FC = () => {
   };
 
   const handleCreatePost = async () => {
+    if (!user) {
+      toast({
+        title: "Error!",
+        description: "You must be logged in to create posts",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     try {
+      const postToInsert: PostInsert = {
+        ...newPost,
+        user_id: user.id
+      };
+      
       const { data, error } = await supabase
         .from('posts')
-        .insert([newPost])
+        .insert([postToInsert])
         .select();
 
       if (error) {
@@ -241,6 +236,7 @@ const PostsPage: React.FC = () => {
               <SelectContent>
                 <SelectItem value="saved">Saved</SelectItem>
                 <SelectItem value="scheduled">Scheduled</SelectItem>
+                <SelectItem value="all">All</SelectItem>
               </SelectContent>
             </Select>
             <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
