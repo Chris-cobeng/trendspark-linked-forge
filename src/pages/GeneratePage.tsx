@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import TopicSelector from '@/components/TopicSelector';
 import PostCard from '@/components/PostCard';
@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { Post } from '@/integrations/supabase/types/posts';
 import { Loader2 } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 
 type PostType = 'insightful' | 'story' | 'callToAction';
 
@@ -19,12 +20,29 @@ interface GeneratedPost {
   type: PostType;
 }
 
+interface LocationState {
+  selectedTopic?: string;
+}
+
 const GeneratePage: React.FC = () => {
   const [selectedTopic, setSelectedTopic] = useState<string>('');
   const [posts, setPosts] = useState<GeneratedPost[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
+  const location = useLocation();
+  const locationState = location.state as LocationState | null;
+
+  useEffect(() => {
+    // Check if there's a selected topic from navigation (from Trends page)
+    if (locationState?.selectedTopic) {
+      setSelectedTopic(locationState.selectedTopic);
+      handleSelectTopic(locationState.selectedTopic);
+      
+      // Clear the location state to prevent regenerating on page refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [locationState]);
 
   const handleSelectTopic = async (topic: string) => {
     setSelectedTopic(topic);
@@ -35,8 +53,22 @@ const GeneratePage: React.FC = () => {
       const postTypes: PostType[] = ['insightful', 'story', 'callToAction'];
       const generatedPosts: GeneratedPost[] = [];
       
-      // Default hashtags (these could come from trending data in a real implementation)
-      const trendingHashtags = ['#LinkedInTips', '#ProfessionalGrowth', '#LinkedCraft', '#CareerAdvice'];
+      // Get trending hashtags from our LinkedIn trends API function
+      let trendingHashtags = ['#LinkedInTips', '#ProfessionalGrowth', '#LinkedCraft', '#CareerAdvice'];
+      
+      try {
+        const { data: trendData, error: trendError } = await supabase.functions.invoke('linkedin-trends');
+        if (!trendError && trendData?.hashtags?.length > 0) {
+          // Get a random selection of trending hashtags
+          const allHashtags = trendData.hashtags;
+          trendingHashtags = allHashtags
+            .sort(() => 0.5 - Math.random()) // Shuffle array
+            .slice(0, 4); // Take first 4 elements
+        }
+      } catch (error) {
+        console.error('Error fetching trending hashtags:', error);
+        // Continue with default hashtags if this fails
+      }
       
       // Generate each post type
       for (let i = 0; i < postTypes.length; i++) {
@@ -136,7 +168,7 @@ const GeneratePage: React.FC = () => {
         <div className="space-y-6">
           <div className="bg-white p-6 rounded-lg shadow-sm border">
             <h2 className="text-xl font-semibold mb-4">Select a Topic</h2>
-            <TopicSelector onSelectTopic={handleSelectTopic} />
+            <TopicSelector onSelectTopic={handleSelectTopic} initialTopic={selectedTopic} />
           </div>
           
           {selectedTopic && (

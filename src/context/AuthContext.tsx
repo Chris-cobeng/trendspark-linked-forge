@@ -21,30 +21,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  // Add a state to track initialization
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    // Set up the auth state listener first
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, currentSession) => {
-        console.log("Auth state change event:", event);
-        setSession(currentSession);
-        setUser(currentSession?.user ?? null);
-        setLoading(false);
-      }
-    );
+    // Avoid duplicate initialization
+    if (initialized) return;
 
-    // Then check for existing session
-    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+    const initAuth = async () => {
+      // Set up the auth state listener first
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        (event, currentSession) => {
+          console.log("Auth state change event:", event);
+          
+          // Only update state, don't trigger redirects from here
+          setSession(currentSession);
+          setUser(currentSession?.user ?? null);
+          
+          if (event === 'SIGNED_OUT') {
+            // Clear any cached data when signed out
+            console.log("User signed out, cleaning up state");
+          }
+          
+          // Always make sure loading is set to false after auth state changes
+          setLoading(false);
+        }
+      );
+
+      // Then check for existing session
+      const { data } = await supabase.auth.getSession();
+      const currentSession = data.session;
+      
       console.log("Current session:", currentSession ? "exists" : "none");
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
       setLoading(false);
-    });
+      setInitialized(true);
 
-    return () => {
-      subscription.unsubscribe();
+      return () => {
+        subscription.unsubscribe();
+      };
     };
-  }, []);
+
+    initAuth();
+  }, [initialized]);
 
   const signOut = async () => {
     // Clean up auth state

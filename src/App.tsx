@@ -20,7 +20,17 @@ const queryClient = new QueryClient();
 const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
   
-  if (loading) return null;
+  if (loading) {
+    // Show loading state instead of redirecting during initial load
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-linkedBlue border-t-transparent"></div>
+          <p className="text-lg font-medium text-gray-700">Loading...</p>
+        </div>
+      </div>
+    );
+  }
   
   if (!user) {
     return <Navigate to="/" replace />;
@@ -29,53 +39,66 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-const App = () => {
-  const { user } = useAuth();
+// We separate the AppRoutes to avoid the useAuth hook being called outside of AuthProvider
+const AppRoutes = () => {
+  const { user, loading } = useAuth();
   
+  // Don't render routes until initial auth check is done
+  if (loading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-linkedBlue border-t-transparent"></div>
+          <p className="text-lg font-medium text-gray-700">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <AnimatePresence mode="wait">
+      <Routes>
+        {/* Redirect based on auth status */}
+        <Route 
+          path="/" 
+          element={user ? <Navigate to="/dashboard" replace /> : <Home />} 
+        />
+        
+        {/* Protected routes */}
+        <Route path="/dashboard" element={
+          <AuthGuard>
+            <Layout><GeneratePage /></Layout>
+          </AuthGuard>
+        } />
+        <Route path="/posts" element={
+          <AuthGuard>
+            <Layout><PostsPage /></Layout>
+          </AuthGuard>
+        } />
+        <Route path="/calendar" element={
+          <AuthGuard>
+            <Layout><CalendarPage /></Layout>
+          </AuthGuard>
+        } />
+        <Route path="/trends" element={
+          <AuthGuard>
+            <Layout><TrendsPage /></Layout>
+          </AuthGuard>
+        } />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </AnimatePresence>
+  );
+};
+
+const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Toaster />
-        <Sonner />
         <BrowserRouter>
-          <AnimatePresence mode="wait">
-            <Routes>
-              <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Home />} />
-              <Route 
-                path="/dashboard" 
-                element={
-                  <AuthGuard>
-                    <Layout><GeneratePage /></Layout>
-                  </AuthGuard>
-                } 
-              />
-              <Route 
-                path="/posts" 
-                element={
-                  <AuthGuard>
-                    <Layout><PostsPage /></Layout>
-                  </AuthGuard>
-                } 
-              />
-              <Route 
-                path="/calendar" 
-                element={
-                  <AuthGuard>
-                    <Layout><CalendarPage /></Layout>
-                  </AuthGuard>
-                } 
-              />
-              <Route 
-                path="/trends" 
-                element={
-                  <AuthGuard>
-                    <Layout><TrendsPage /></Layout>
-                  </AuthGuard>
-                } 
-              />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </AnimatePresence>
+          <Toaster />
+          <Sonner />
+          <AppRoutes />
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>
