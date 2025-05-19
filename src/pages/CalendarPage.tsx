@@ -1,99 +1,54 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Calendar } from '@/components/ui/calendar';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from '@/context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { Post as PostType } from '@/integrations/supabase/types/posts';
 import { Loader2, Calendar as CalendarIcon, Clock, Edit, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { useNavigate } from 'react-router-dom';
 import { 
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useStableData } from '@/hooks/useStableData';
 
 const CalendarPage: React.FC = () => {
   const [date, setDate] = useState<Date | undefined>(new Date());
-  const [scheduledPosts, setScheduledPosts] = useState<PostType[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selectedDatePosts, setSelectedDatePosts] = useState<PostType[]>([]);
-  const [isMounted, setIsMounted] = useState(false);
-  const postsRef = useRef<PostType[]>([]);
   const { toast } = useToast();
-  const { user } = useAuth();
   const navigate = useNavigate();
 
-  // Use useCallback for fetchScheduledPosts to prevent recreation on every render
-  const fetchScheduledPosts = useCallback(async () => {
-    if (!user || !isMounted) return;
-    
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('posts')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('status', 'scheduled')
-        .not('scheduled_at', 'is', null)
-        .order('scheduled_at', { ascending: true });
+  // Use the stable data hook for fetching posts
+  const fetchScheduledPosts = useCallback(async (userId: string) => {
+    const { data, error } = await supabase
+      .from('posts')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'scheduled')
+      .not('scheduled_at', 'is', null)
+      .order('scheduled_at', { ascending: true });
 
-      if (error) {
-        console.error('Error fetching scheduled posts:', error);
-        toast({
-          title: "Error!",
-          description: "Failed to load scheduled posts",
-          variant: "destructive",
-        });
-      } else if (isMounted) {
-        // Store posts in ref to prevent unnecessary re-renders
-        postsRef.current = data as PostType[] || [];
-        setScheduledPosts(postsRef.current);
-      }
-    } catch (error) {
-      console.error('Unexpected error fetching scheduled posts:', error);
-      if (isMounted) {
-        toast({
-          title: "Error!",
-          description: "An unexpected error occurred",
-          variant: "destructive",
-        });
-      }
-    } finally {
-      if (isMounted) {
-        setLoading(false);
-      }
-    }
-  }, [user, toast, isMounted]);
-
-  // Lifecycle management to prevent memory leaks and unnecessary updates
-  useEffect(() => {
-    setIsMounted(true);
-    return () => {
-      setIsMounted(false);
-    };
+    return { data: data as PostType[] || [], error };
   }, []);
 
-  // Fetch posts only when needed - on component mount and when user changes
-  useEffect(() => {
-    if (isMounted && user) {
-      fetchScheduledPosts();
-    }
-  }, [fetchScheduledPosts, user, isMounted]);
+  const { data: scheduledPosts, loading, dataRef: postsRef } = useStableData<PostType>(
+    fetchScheduledPosts,
+    []
+  );
 
   // Create a stable function for filtering posts by date
   const filterPostsByDate = useCallback((selectedDate: Date | undefined) => {
-    if (!selectedDate || !postsRef.current.length) {
+    if (!selectedDate || !postsRef.length) {
       setSelectedDatePosts([]);
       return;
     }
     
-    const filteredPosts = postsRef.current.filter(post => {
+    const filteredPosts = postsRef.filter(post => {
       if (!post.scheduled_at) return false;
       
       const postDate = new Date(post.scheduled_at);
@@ -105,16 +60,16 @@ const CalendarPage: React.FC = () => {
     });
     
     setSelectedDatePosts(filteredPosts);
-  }, []);
+  }, [postsRef]);
 
-  // Use effect for date changes
-  useEffect(() => {
+  // Use callback for date changes
+  React.useEffect(() => {
     filterPostsByDate(date);
   }, [date, scheduledPosts, filterPostsByDate]);
 
   // Function to determine if a date has posts scheduled
   const hasScheduledPost = useCallback((day: Date) => {
-    return postsRef.current.some(post => {
+    return postsRef.some(post => {
       if (!post.scheduled_at) return false;
       
       const postDate = new Date(post.scheduled_at);
@@ -124,11 +79,11 @@ const CalendarPage: React.FC = () => {
         postDate.getFullYear() === day.getFullYear()
       );
     });
-  }, []);
+  }, [postsRef]);
 
   // Count posts for a specific date
   const getPostCountForDate = useCallback((day: Date) => {
-    return postsRef.current.filter(post => {
+    return postsRef.filter(post => {
       if (!post.scheduled_at) return false;
       
       const postDate = new Date(post.scheduled_at);
@@ -138,22 +93,11 @@ const CalendarPage: React.FC = () => {
         postDate.getFullYear() === day.getFullYear()
       );
     }).length;
-  }, []);
+  }, [postsRef]);
 
   const handleViewPost = (postId: string) => {
     navigate(`/posts?id=${postId}`);
   };
-
-  // If user is not logged in, redirect to login
-  if (!user) {
-    return (
-      <div className="flex flex-col items-center justify-center p-10">
-        <h2 className="text-2xl font-bold mb-4">Login Required</h2>
-        <p className="text-grayScale-500 mb-4">You need to be logged in to view and manage your calendar.</p>
-        <Button onClick={() => navigate("/")}>Go to Login</Button>
-      </div>
-    );
-  }
 
   return (
     <div className="w-full mx-auto">
@@ -183,6 +127,7 @@ const CalendarPage: React.FC = () => {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 className="flex justify-center items-center p-12"
+                key="loading"
               >
                 <Loader2 className="h-8 w-8 animate-spin text-linkedBlue mr-2" />
                 <span className="text-grayScale-500">Loading your content calendar...</span>
@@ -193,6 +138,7 @@ const CalendarPage: React.FC = () => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 className="flex flex-col"
+                key="calendar"
               >
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
                   {/* Calendar - Larger Size */}
@@ -251,9 +197,10 @@ const CalendarPage: React.FC = () => {
                         <CalendarIcon className="h-4 w-4 mr-2 text-linkedBlue" />
                         {date ? format(date, "MMMM d, yyyy") : "Select a Date"}
                       </h3>
-                      <AnimatePresence>
+                      <AnimatePresence mode="wait">
                         {selectedDatePosts.length > 0 ? (
                           <motion.div 
+                            key="has-posts"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
@@ -267,33 +214,32 @@ const CalendarPage: React.FC = () => {
                                 exit={{ opacity: 0, x: 10 }}
                                 transition={{ duration: 0.2 }}
                               >
-                                <Card className="bg-linkedBlue/5 border-linkedBlue/20 hover:shadow-md transition-shadow">
-                                  <CardContent className="p-4">
-                                    <div className="flex justify-between items-start">
-                                      <div className="flex-1">
-                                        <p className="font-medium">{post.title}</p>
-                                        <p className="text-sm text-grayScale-500 mt-1 line-clamp-2">{post.content}</p>
-                                        <div className="flex items-center mt-2 text-xs text-linkedBlue">
-                                          <Clock size={12} className="mr-1" /> 
-                                          Scheduled for {format(new Date(post.scheduled_at!), "h:mm a")}
-                                        </div>
+                                <div className="bg-linkedBlue/5 border-linkedBlue/20 hover:shadow-md transition-shadow rounded-lg border p-4">
+                                  <div className="flex justify-between items-start">
+                                    <div className="flex-1">
+                                      <p className="font-medium">{post.title}</p>
+                                      <p className="text-sm text-grayScale-500 mt-1 line-clamp-2">{post.content}</p>
+                                      <div className="flex items-center mt-2 text-xs text-linkedBlue">
+                                        <Clock size={12} className="mr-1" /> 
+                                        Scheduled for {format(new Date(post.scheduled_at!), "h:mm a")}
                                       </div>
-                                      <Button
-                                        variant="outline" 
-                                        size="sm"
-                                        onClick={() => handleViewPost(post.id)}
-                                        className="ml-2"
-                                      >
-                                        <Edit size={14} className="mr-1" /> View
-                                      </Button>
                                     </div>
-                                  </CardContent>
-                                </Card>
+                                    <Button
+                                      variant="outline" 
+                                      size="sm"
+                                      onClick={() => handleViewPost(post.id)}
+                                      className="ml-2"
+                                    >
+                                      <Edit size={14} className="mr-1" /> View
+                                    </Button>
+                                  </div>
+                                </div>
                               </motion.div>
                             ))}
                           </motion.div>
                         ) : date ? (
                           <motion.div 
+                            key="no-posts"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}

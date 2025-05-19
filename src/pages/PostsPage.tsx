@@ -1,4 +1,13 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Post as PostType, PostInsert } from '@/integrations/supabase/types/posts';
+import { motion, AnimatePresence } from 'framer-motion';
+import { format } from 'date-fns';
+import { useStableData } from '@/hooks/useStableData';
+
+// Import UI components
 import {
   Card,
   CardHeader,
@@ -27,25 +36,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
-import { format } from 'date-fns';
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Clock, Trash2, Edit, CheckCircle } from "lucide-react";
 import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
-import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
-import { Post as PostType, PostInsert } from '@/integrations/supabase/types/posts';
-import { useAuth } from '@/context/AuthContext';
-import { motion, AnimatePresence } from 'framer-motion';
 
 const PostsPage: React.FC = () => {
   // Access URL parameters
   const [searchParams] = useSearchParams();
   const initialFilter = searchParams.get('filter') || 'saved';
   
-  const [posts, setPosts] = useState<PostType[]>([]);
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>(initialFilter);
   const [newPost, setNewPost] = useState<PostInsert>({
     title: '',
@@ -54,72 +54,29 @@ const PostsPage: React.FC = () => {
     scheduled_at: null,
   });
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
-  const postsRef = useRef<PostType[]>([]);
   const navigate = useNavigate();
-  const location = useLocation();
   const { toast } = useToast();
-  const { user } = useAuth();
 
-  // Set mounted state for cleanup
-  useEffect(() => {
-    setIsMounted(true);
-    return () => setIsMounted(false);
-  }, []);
-
-  // Use memoized fetchPosts function to avoid unnecessary re-renders
-  const fetchPosts = useCallback(async (filterValue: string) => {
-    if (!user || !isMounted) return;
+  // Fetch posts with stable data hook
+  const fetchPosts = useCallback(async (userId: string) => {
+    let query = supabase.from('posts')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
     
-    setLoading(true);
-    try {
-      let query = supabase.from('posts')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-      
-      if (filterValue !== 'all') {
-        query = query.eq('status', filterValue);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('Error fetching posts:', error);
-        if (isMounted) {
-          toast({
-            title: "Error!",
-            description: "Failed to load posts",
-            variant: "destructive",
-          });
-        }
-      } else if (isMounted) {
-        // Store in ref to prevent unnecessary re-renders
-        postsRef.current = data as PostType[] || [];
-        setPosts(postsRef.current);
-      }
-    } catch (error) {
-      console.error('Unexpected error fetching posts:', error);
-      if (isMounted) {
-        toast({
-          title: "Error!",
-          description: "An unexpected error occurred while loading posts",
-          variant: "destructive",
-        });
-      }
-    } finally {
-      if (isMounted) {
-        setLoading(false);
-      }
+    if (filter !== 'all') {
+      query = query.eq('status', filter);
     }
-  }, [user, toast, isMounted]);
 
-  // Separate effect for loading data with proper dependencies
-  useEffect(() => {
-    if (isMounted && user) {
-      fetchPosts(filter);
-    }
-  }, [isMounted, filter, user, fetchPosts]);
+    const { data, error } = await query;
+    return { data: data as PostType[] || [], error };
+  }, [filter]);
+
+  const { data: posts, loading, setData: setPosts, dataRef: postsRef } = useStableData<PostType>(
+    fetchPosts,
+    [],
+    [filter] // Include filter as a dependency to refetch when it changes
+  );
 
   const handleFilterChange = (value: string) => {
     setFilter(value);
@@ -141,16 +98,19 @@ const PostsPage: React.FC = () => {
   };
 
   const handleCreatePost = async () => {
-    if (!user) {
-      toast({
-        title: "Error!",
-        description: "You must be logged in to create posts",
-        variant: "destructive",
-      });
-      return;
-    }
-    
     try {
+      // Get user from supabase auth
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        toast({
+          title: "Error!",
+          description: "You must be logged in to create posts",
+          variant: "destructive",
+        });
+        return;
+      }
+      
       const postToInsert: PostInsert = {
         ...newPost,
         user_id: user.id
@@ -168,10 +128,12 @@ const PostsPage: React.FC = () => {
           description: "Failed to create post",
           variant: "destructive",
         });
-      } else if (isMounted) {
+      } else {
         // Only update state if the filter matches
         if (filter === 'all' || filter === newPost.status) {
-          setPosts(prev => [data[0] as PostType, ...prev]);
+          // Update both the ref and the state
+          const newPosts = [data[0] as PostType, ...postsRef];
+          setPosts(newPosts);
         }
         
         // Reset form
@@ -198,8 +160,6 @@ const PostsPage: React.FC = () => {
   };
 
   const handleDeletePost = async (id: string) => {
-    if (!isMounted) return;
-    
     try {
       const { error } = await supabase
         .from('posts')
@@ -213,10 +173,11 @@ const PostsPage: React.FC = () => {
           description: "Failed to delete post",
           variant: "destructive",
         });
-      } else if (isMounted) {
-        // Update both ref and state to keep them in sync
-        postsRef.current = postsRef.current.filter(post => post.id !== id);
-        setPosts(prev => prev.filter(post => post.id !== id));
+      } else {
+        // Update both the ref and the state to keep them in sync
+        const filteredPosts = postsRef.filter(post => post.id !== id);
+        setPosts(filteredPosts);
+        
         toast({
           title: "Success!",
           description: "Post deleted successfully",
@@ -224,19 +185,15 @@ const PostsPage: React.FC = () => {
       }
     } catch (error) {
       console.error('Unexpected error deleting post:', error);
-      if (isMounted) {
-        toast({
-          title: "Error!",
-          description: "Unexpected error deleting post",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Error!",
+        description: "Unexpected error deleting post",
+        variant: "destructive",
+      });
     }
   };
 
   const handleUpdatePostStatus = async (id: string, status: 'saved' | 'scheduled', scheduled_at: string | null = null) => {
-    if (!isMounted) return;
-    
     try {
       const { error } = await supabase
         .from('posts')
@@ -250,22 +207,18 @@ const PostsPage: React.FC = () => {
           description: "Failed to update post status",
           variant: "destructive",
         });
-      } else if (isMounted) {
+      } else {
         // If the filter is not 'all', and the status doesn't match the filter,
         // remove the post from the current view
         if (filter !== 'all' && status !== filter) {
-          postsRef.current = postsRef.current.filter(post => post.id !== id);
-          setPosts(prev => prev.filter(post => post.id !== id));
+          const filteredPosts = postsRef.filter(post => post.id !== id);
+          setPosts(filteredPosts);
         } else {
           // Update both ref and state to keep them in sync
-          postsRef.current = postsRef.current.map(post =>
+          const updatedPosts = postsRef.map(post =>
             post.id === id ? { ...post, status, scheduled_at } : post
           );
-          setPosts(prev =>
-            prev.map(post =>
-              post.id === id ? { ...post, status, scheduled_at } : post
-            )
-          );
+          setPosts(updatedPosts);
         }
         
         toast({
@@ -275,26 +228,13 @@ const PostsPage: React.FC = () => {
       }
     } catch (error) {
       console.error('Unexpected error updating post status:', error);
-      if (isMounted) {
-        toast({
-          title: "Error!",
-          description: "Unexpected error updating post status",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Error!",
+        description: "Unexpected error updating post status",
+        variant: "destructive",
+      });
     }
   };
-
-  // If user is not logged in, redirect to login
-  if (!user) {
-    return (
-      <div className="flex flex-col items-center justify-center p-10">
-        <h2 className="text-2xl font-bold mb-4">Login Required</h2>
-        <p className="text-grayScale-500 mb-4">You need to be logged in to view and manage your posts.</p>
-        <Button onClick={() => navigate("/")}>Go to Login</Button>
-      </div>
-    );
-  }
 
   return (
     <div>
@@ -405,6 +345,7 @@ const PostsPage: React.FC = () => {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 className="flex justify-center items-center p-8"
+                key="loading"
               >
                 <div className="h-8 w-8 animate-spin rounded-full border-4 border-linkedBlue border-t-transparent"></div>
               </motion.div>
@@ -414,6 +355,7 @@ const PostsPage: React.FC = () => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 className="text-center p-8"
+                key="empty"
               >
                 <p className="text-grayScale-500">No posts found. Create a new post to get started.</p>
               </motion.div>
@@ -423,6 +365,7 @@ const PostsPage: React.FC = () => {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.3 }}
+                key="posts-table"
               >
                 <div className="overflow-x-auto">
                   <Table>
@@ -437,74 +380,72 @@ const PostsPage: React.FC = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      <AnimatePresence>
-                        {posts.map((post) => (
-                          <TableRow key={post.id} className="hover:bg-muted/50">
-                            <TableCell className="font-medium">{post.title}</TableCell>
-                            <TableCell>
-                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
-                                post.status === 'scheduled' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
-                              }`}>
-                                {post.status === 'scheduled' ? 
-                                  <><Clock className="h-3 w-3 mr-1" /> Scheduled</> : 
-                                  <><CheckCircle className="h-3 w-3 mr-1" /> Saved</>
-                                }
-                              </span>
-                            </TableCell>
-                            <TableCell>{format(new Date(post.created_at), "MMM d, yyyy")}</TableCell>
-                            <TableCell>{post.scheduled_at ? format(new Date(post.scheduled_at), "MMM d, yyyy") : 'N/A'}</TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                {post.status === 'saved' && (
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-8 px-2 text-xs"
-                                      >
-                                        <CalendarIcon className="h-3.5 w-3.5 mr-1" />
-                                        Schedule
-                                      </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0">
-                                      <Calendar
-                                        mode="single"
-                                        selected={post.scheduled_at ? new Date(post.scheduled_at) : undefined}
-                                        onSelect={(date) => {
-                                          if (date) {
-                                            handleUpdatePostStatus(post.id, 'scheduled', date.toISOString());
-                                          }
-                                        }}
-                                        disabled={(date) => date < new Date()}
-                                        initialFocus
-                                      />
-                                    </PopoverContent>
-                                  </Popover>
-                                )}
-                                {post.status === 'scheduled' && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 px-2 text-xs"
-                                    onClick={() => handleUpdatePostStatus(post.id, 'saved', null)}
-                                  >
-                                    Unschedule
-                                  </Button>
-                                )}
+                      {posts.map((post) => (
+                        <TableRow key={post.id} className="hover:bg-muted/50">
+                          <TableCell className="font-medium">{post.title}</TableCell>
+                          <TableCell>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
+                              post.status === 'scheduled' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                            }`}>
+                              {post.status === 'scheduled' ? 
+                                <><Clock className="h-3 w-3 mr-1" /> Scheduled</> : 
+                                <><CheckCircle className="h-3 w-3 mr-1" /> Saved</>
+                              }
+                            </span>
+                          </TableCell>
+                          <TableCell>{format(new Date(post.created_at), "MMM d, yyyy")}</TableCell>
+                          <TableCell>{post.scheduled_at ? format(new Date(post.scheduled_at), "MMM d, yyyy") : 'N/A'}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              {post.status === 'saved' && (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 px-2 text-xs"
+                                    >
+                                      <CalendarIcon className="h-3.5 w-3.5 mr-1" />
+                                      Schedule
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0">
+                                    <Calendar
+                                      mode="single"
+                                      selected={post.scheduled_at ? new Date(post.scheduled_at) : undefined}
+                                      onSelect={(date) => {
+                                        if (date) {
+                                          handleUpdatePostStatus(post.id, 'scheduled', date.toISOString());
+                                        }
+                                      }}
+                                      disabled={(date) => date < new Date()}
+                                      initialFocus
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+                              )}
+                              {post.status === 'scheduled' && (
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="h-8 px-2 text-xs text-red-500 hover:text-red-600 hover:bg-red-50"
-                                  onClick={() => handleDeletePost(post.id)}
+                                  className="h-8 px-2 text-xs"
+                                  onClick={() => handleUpdatePostStatus(post.id, 'saved', null)}
                                 >
-                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Unschedule
                                 </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </AnimatePresence>
+                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 px-2 text-xs text-red-500 hover:text-red-600 hover:bg-red-50"
+                                onClick={() => handleDeletePost(post.id)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                     </TableBody>
                   </Table>
                 </div>
