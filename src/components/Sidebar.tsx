@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Calendar, Edit, Copy, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { motion } from 'framer-motion';
 
 const Sidebar = () => {
   const location = useLocation();
@@ -58,6 +59,13 @@ const Sidebar = () => {
               >
                 <span className="mr-3">{item.icon}</span>
                 <span>{item.label}</span>
+                {location.pathname === item.path && (
+                  <motion.div
+                    className="absolute left-0 w-1 h-8 bg-linkedBlue rounded-r"
+                    layoutId="sidebar-indicator"
+                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                  />
+                )}
               </Link>
             </li>
           ))}
@@ -66,7 +74,7 @@ const Sidebar = () => {
       <div className="p-4 border-t border-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-full bg-grayScale-200 flex items-center justify-center text-white">
+            <div className="w-10 h-10 rounded-full bg-linkedBlue flex items-center justify-center text-white">
               {user?.user_metadata?.full_name?.charAt(0) || user?.email?.charAt(0) || 'U'}
             </div>
             <div>
@@ -76,7 +84,7 @@ const Sidebar = () => {
           </div>
           <button 
             onClick={handleSignOut}
-            className="text-gray-500 hover:text-linkedBlue"
+            className="text-gray-500 hover:text-linkedBlue transition-colors duration-200"
             title="Sign out"
           >
             <LogOut size={18} />

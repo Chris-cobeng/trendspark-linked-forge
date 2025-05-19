@@ -6,11 +6,11 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
-} from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Button } from "@/components/ui/button"
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -20,30 +20,31 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Calendar } from "@/components/ui/calendar"
+} from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
 import { format } from 'date-fns';
-import { cn } from "@/lib/utils"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon } from "lucide-react"
-import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer"
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { cn } from "@/lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarIcon, Clock, Trash2, Edit, CheckCircle } from "lucide-react";
+import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Post as PostType, PostInsert } from '@/integrations/supabase/types/posts';
 import { useAuth } from '@/context/AuthContext';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const PostsPage: React.FC = () => {
   const [posts, setPosts] = useState<PostType[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [filter, setFilter] = useState<string>('saved');
   const [newPost, setNewPost] = useState<PostInsert>({
     title: '',
     content: '',
@@ -52,20 +53,21 @@ const PostsPage: React.FC = () => {
   });
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
-  const currentFilter = searchParams.get('filter') || 'saved';
 
+  // Use useEffect to fetch posts when component mounts or filter changes
   useEffect(() => {
     if (user) {
-      fetchPosts(currentFilter);
+      fetchPosts(filter);
     } else {
       setPosts([]);
       setLoading(false);
     }
-  }, [currentFilter, user]);
+  }, [filter, user]);
 
-  const fetchPosts = async (filter: string) => {
+  const fetchPosts = async (filterValue: string) => {
     setLoading(true);
     try {
       let query = supabase.from('posts')
@@ -73,8 +75,8 @@ const PostsPage: React.FC = () => {
         .eq('user_id', user?.id)
         .order('created_at', { ascending: false });
       
-      if (filter !== 'all') {
-        query = query.eq('status', filter);
+      if (filterValue !== 'all') {
+        query = query.eq('status', filterValue);
       }
 
       const { data, error } = await query;
@@ -101,8 +103,8 @@ const PostsPage: React.FC = () => {
     }
   };
 
-  const handleFilterChange = (filter: string) => {
-    setSearchParams({ filter });
+  const handleFilterChange = (value: string) => {
+    setFilter(value);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -111,7 +113,11 @@ const PostsPage: React.FC = () => {
   };
 
   const handleDateChange = (date: Date | undefined) => {
-    setNewPost(prev => ({ ...prev, scheduled_at: date ? date.toISOString() : null }));
+    setNewPost(prev => ({ 
+      ...prev, 
+      scheduled_at: date ? date.toISOString() : null,
+      status: date ? 'scheduled' : 'saved'
+    }));
   };
 
   const handleCreatePost = async () => {
@@ -197,11 +203,11 @@ const PostsPage: React.FC = () => {
     }
   };
 
-  const handleUpdatePostStatus = async (id: string, status: 'saved' | 'scheduled') => {
+  const handleUpdatePostStatus = async (id: string, status: 'saved' | 'scheduled', scheduled_at: string | null = null) => {
     try {
       const { error } = await supabase
         .from('posts')
-        .update({ status })
+        .update({ status, scheduled_at })
         .eq('id', id);
 
       if (error) {
@@ -214,12 +220,12 @@ const PostsPage: React.FC = () => {
       } else {
         setPosts(prev =>
           prev.map(post =>
-            post.id === id ? { ...post, status } : post
+            post.id === id ? { ...post, status, scheduled_at } : post
           )
         );
         toast({
           title: "Success!",
-          description: "Post status updated successfully",
+          description: `Post ${status === 'scheduled' ? 'scheduled' : 'unscheduled'} successfully`,
         });
       }
     } catch (error) {
@@ -247,30 +253,30 @@ const PostsPage: React.FC = () => {
     <div>
       <Card>
         <CardHeader>
-          <CardTitle>Posts</CardTitle>
-          <CardDescription>Manage your LinkedIn posts.</CardDescription>
+          <CardTitle>LinkedIn Posts</CardTitle>
+          <CardDescription>Manage your LinkedIn post history and schedule future content.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex justify-between items-center mb-4">
-            <Select defaultValue={currentFilter} onValueChange={handleFilterChange}>
+            <Select value={filter} onValueChange={handleFilterChange}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Filter by Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="saved">Saved</SelectItem>
                 <SelectItem value="scheduled">Scheduled</SelectItem>
-                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="all">All Posts</SelectItem>
               </SelectContent>
             </Select>
             <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
               <DrawerTrigger asChild>
-                <Button>Add Post</Button>
+                <Button className="gradient-btn">Create Post</Button>
               </DrawerTrigger>
               <DrawerContent>
                 <DrawerHeader>
                   <DrawerTitle>Create a new post</DrawerTitle>
                   <DrawerDescription>
-                    Create a new post to be saved or scheduled.
+                    Create a new LinkedIn post to be saved or scheduled.
                   </DrawerDescription>
                 </DrawerHeader>
                 <div className="grid gap-4 py-4 px-4">
@@ -297,6 +303,7 @@ const PostsPage: React.FC = () => {
                       value={newPost.content}
                       onChange={handleInputChange}
                       className="col-span-3"
+                      rows={8}
                     />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
@@ -336,7 +343,7 @@ const PostsPage: React.FC = () => {
                   </div>
                 </div>
                 <DrawerFooter>
-                  <Button onClick={handleCreatePost}>Create Post</Button>
+                  <Button onClick={handleCreatePost} className="gradient-btn">Create Post</Button>
                   <DrawerClose asChild>
                     <Button variant="outline">Cancel</Button>
                   </DrawerClose>
@@ -344,60 +351,124 @@ const PostsPage: React.FC = () => {
               </DrawerContent>
             </Drawer>
           </div>
-          {loading ? (
-            <div className="flex justify-center items-center p-8">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-linkedBlue border-t-transparent"></div>
-            </div>
-          ) : posts.length === 0 ? (
-            <div className="text-center p-8">
-              <p className="text-grayScale-500">No posts found. Create a new post to get started.</p>
-            </div>
-          ) : (
-            <Table>
-              <TableCaption>A list of your recent posts.</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Scheduled At</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {posts.map((post) => (
-                  <TableRow key={post.id}>
-                    <TableCell>{post.title}</TableCell>
-                    <TableCell>{post.status}</TableCell>
-                    <TableCell>{post.scheduled_at ? format(new Date(post.scheduled_at), "PPP") : 'N/A'}</TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        onClick={() => handleDeletePost(post.id)}
-                      >
-                        Delete
-                      </Button>
-                      {post.status === 'saved' && (
-                        <Button
-                          variant="ghost"
-                          onClick={() => handleUpdatePostStatus(post.id, 'scheduled')}
+          <AnimatePresence mode="wait">
+            {loading ? (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex justify-center items-center p-8"
+              >
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-linkedBlue border-t-transparent"></div>
+              </motion.div>
+            ) : posts.length === 0 ? (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="text-center p-8"
+              >
+                <p className="text-grayScale-500">No posts found. Create a new post to get started.</p>
+              </motion.div>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Table>
+                  <TableCaption>A list of your LinkedIn posts.</TableCaption>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Title</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead>Scheduled</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <AnimatePresence>
+                      {posts.map((post) => (
+                        <motion.tr
+                          key={post.id}
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="hover:bg-muted/50"
                         >
-                          Schedule
-                        </Button>
-                      )}
-                      {post.status === 'scheduled' && (
-                        <Button
-                          variant="ghost"
-                          onClick={() => handleUpdatePostStatus(post.id, 'saved')}
-                        >
-                          Unschedule
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+                          <TableCell className="font-medium">{post.title}</TableCell>
+                          <TableCell>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
+                              post.status === 'scheduled' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                            }`}>
+                              {post.status === 'scheduled' ? 
+                                <><Clock className="h-3 w-3 mr-1" /> Scheduled</> : 
+                                <><CheckCircle className="h-3 w-3 mr-1" /> Saved</>
+                              }
+                            </span>
+                          </TableCell>
+                          <TableCell>{format(new Date(post.created_at), "MMM d, yyyy")}</TableCell>
+                          <TableCell>{post.scheduled_at ? format(new Date(post.scheduled_at), "MMM d, yyyy") : 'N/A'}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              {post.status === 'saved' && (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 px-2 text-xs"
+                                    >
+                                      <CalendarIcon className="h-3.5 w-3.5 mr-1" />
+                                      Schedule
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0">
+                                    <Calendar
+                                      mode="single"
+                                      selected={post.scheduled_at ? new Date(post.scheduled_at) : undefined}
+                                      onSelect={(date) => {
+                                        if (date) {
+                                          handleUpdatePostStatus(post.id, 'scheduled', date.toISOString());
+                                        }
+                                      }}
+                                      disabled={(date) => date < new Date()}
+                                      initialFocus
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+                              )}
+                              {post.status === 'scheduled' && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 px-2 text-xs"
+                                  onClick={() => handleUpdatePostStatus(post.id, 'saved', null)}
+                                >
+                                  Unschedule
+                                </Button>
+                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 px-2 text-xs text-red-500 hover:text-red-600 hover:bg-red-50"
+                                onClick={() => handleDeletePost(post.id)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </motion.tr>
+                      ))}
+                    </AnimatePresence>
+                  </TableBody>
+                </Table>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </CardContent>
       </Card>
     </div>
