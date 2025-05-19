@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Calendar, Edit, TrendingUp, Copy, LogOut } from 'lucide-react';
+import { Calendar, Edit, Copy, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 
@@ -15,7 +15,6 @@ const Sidebar = () => {
     { label: 'Generate Post', icon: <Edit size={20} />, path: '/dashboard' },
     { label: 'Posts', icon: <Copy size={20} />, path: '/posts' },
     { label: 'Calendar', icon: <Calendar size={20} />, path: '/calendar' },
-    { label: 'Trends', icon: <TrendingUp size={20} />, path: '/trends' },
   ];
 
   const handleSignOut = async () => {

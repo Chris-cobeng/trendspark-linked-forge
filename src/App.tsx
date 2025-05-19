@@ -10,7 +10,6 @@ import Home from "./pages/Home";
 import GeneratePage from "./pages/GeneratePage";
 import PostsPage from "./pages/PostsPage";
 import CalendarPage from "./pages/CalendarPage";
-import TrendsPage from "./pages/TrendsPage";
 import NotFound from "./pages/NotFound";
 import { useAuth } from "./context/AuthContext";
 
@@ -78,11 +77,6 @@ const AppRoutes = () => {
         <Route path="/calendar" element={
           <AuthGuard>
             <Layout><CalendarPage /></Layout>
-          </AuthGuard>
-        } />
-        <Route path="/trends" element={
-          <AuthGuard>
-            <Layout><TrendsPage /></Layout>
           </AuthGuard>
         } />
         <Route path="*" element={<NotFound />} />

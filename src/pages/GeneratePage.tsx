@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import TopicSelector from '@/components/TopicSelector';
 import PostCard from '@/components/PostCard';
@@ -8,7 +8,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { Post } from '@/integrations/supabase/types/posts';
 import { Loader2 } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
 import {
   Select,
   SelectContent,
@@ -27,10 +26,6 @@ interface GeneratedPost {
   type: PostType;
 }
 
-interface LocationState {
-  selectedTopic?: string;
-}
-
 const GeneratePage: React.FC = () => {
   const [selectedTopic, setSelectedTopic] = useState<string>('');
   const [selectedPostType, setSelectedPostType] = useState<PostType>('insightful');
@@ -38,18 +33,6 @@ const GeneratePage: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
-  const location = useLocation();
-  const locationState = location.state as LocationState | null;
-
-  useEffect(() => {
-    // Check if there's a selected topic from navigation (from Trends page)
-    if (locationState?.selectedTopic) {
-      setSelectedTopic(locationState.selectedTopic);
-      
-      // Clear the location state to prevent regenerating on page refresh
-      window.history.replaceState({}, document.title);
-    }
-  }, [locationState]);
 
   const handleGeneratePost = async () => {
     if (!selectedTopic) {
@@ -67,20 +50,6 @@ const GeneratePage: React.FC = () => {
     try {
       // Get trending hashtags from our LinkedIn trends API function
       let trendingHashtags = ['#LinkedInTips', '#ProfessionalGrowth', '#LinkedCraft', '#CareerAdvice'];
-      
-      try {
-        const { data: trendData, error: trendError } = await supabase.functions.invoke('linkedin-trends');
-        if (!trendError && trendData?.hashtags?.length > 0) {
-          // Get a random selection of trending hashtags
-          const allHashtags = trendData.hashtags;
-          trendingHashtags = allHashtags
-            .sort(() => 0.5 - Math.random()) // Shuffle array
-            .slice(0, 4); // Take first 4 elements
-        }
-      } catch (error) {
-        console.error('Error fetching trending hashtags:', error);
-        // Continue with default hashtags if this fails
-      }
       
       // Generate a post with the selected type
       const { data, error } = await supabase.functions.invoke('generate-linkedin-post', {

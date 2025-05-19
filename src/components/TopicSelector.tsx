@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { TrendingUp, Loader2 } from 'lucide-react';
+import { TrendingUp, Loader2, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -24,7 +24,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
   const [customTopic, setCustomTopic] = useState(initialTopic);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-  const [trendingTopics, setTrendingTopics] = useState<TopicOption[]>([]);
+  const [topicSuggestions, setTopicSuggestions] = useState<TopicOption[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -35,68 +35,47 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
   }, [initialTopic]);
 
   useEffect(() => {
-    // If suggestions are shown, load trending topics
-    if (showSuggestions && trendingTopics.length === 0) {
-      fetchTrendingTopics();
+    // If suggestions are shown, load AI-generated topics
+    if (showSuggestions && topicSuggestions.length === 0) {
+      fetchAITopics();
     }
   }, [showSuggestions]);
 
-  // Function to fetch trending topics from LinkedIn API
-  const fetchTrendingTopics = async () => {
+  // Function to fetch AI-generated topic suggestions
+  const fetchAITopics = async (userInput?: string) => {
     setLoadingSuggestions(true);
     
     try {
-      // Fetch trend data from our Supabase edge function
-      const { data, error } = await supabase.functions.invoke('linkedin-trends');
+      // Call our Supabase edge function for AI topic suggestions
+      const { data, error } = await supabase.functions.invoke('suggest-linkedin-topics', {
+        body: { userInput }
+      });
       
       if (error) throw error;
       
-      // Transform the trend data into topic options
-      if (data && data.trends && data.trends.length > 0) {
-        const topicOptions: TopicOption[] = data.trends.map((trend: any) => ({
-          id: trend.id,
-          label: trend.topic,
-          icon: getIconForTopic(trend.topic),
-          trending: true,
-          description: trend.description
-        }));
-        
-        setTrendingTopics(topicOptions);
+      if (data?.topics && data.topics.length > 0) {
+        setTopicSuggestions(data.topics);
       } else {
-        // Fallback to default topics if no trends were found
-        setTrendingTopics(getDefaultTopics());
+        // Fallback to default topics if no suggestions were found
+        setTopicSuggestions(getDefaultTopics());
+        toast({
+          title: "Using default topics",
+          description: "Could not generate AI topics at this time",
+        });
       }
     } catch (error) {
-      console.error('Error fetching trending topics:', error);
+      console.error('Error fetching AI topics:', error);
       toast({
         title: "Failed to load topics",
-        description: "Could not load trending topic suggestions",
+        description: "Could not load AI topic suggestions",
         variant: "destructive",
       });
       
       // Fallback to default topics
-      setTrendingTopics(getDefaultTopics());
+      setTopicSuggestions(getDefaultTopics());
     } finally {
       setLoadingSuggestions(false);
     }
-  };
-  
-  // Get an icon for a topic based on its content
-  const getIconForTopic = (topic: string): string => {
-    const topicLower = topic.toLowerCase();
-    if (topicLower.includes('ai') || topicLower.includes('artificial intelligence')) return '🤖';
-    if (topicLower.includes('work') || topicLower.includes('remote')) return '🏠';
-    if (topicLower.includes('brand') || topicLower.includes('personal')) return '👤';
-    if (topicLower.includes('lead') || topicLower.includes('management')) return '🚀';
-    if (topicLower.includes('digital') || topicLower.includes('tech')) return '💻';
-    if (topicLower.includes('balance') || topicLower.includes('wellness')) return '⚖️';
-    if (topicLower.includes('growth') || topicLower.includes('learning')) return '📈';
-    if (topicLower.includes('trend') || topicLower.includes('future')) return '🔮';
-    if (topicLower.includes('network') || topicLower.includes('connect')) return '🌐';
-    if (topicLower.includes('career') || topicLower.includes('job')) return '🧑‍💼';
-    if (topicLower.includes('content') || topicLower.includes('market')) return '📱';
-    if (topicLower.includes('data') || topicLower.includes('analytics')) return '📊';
-    return '✨'; // Default icon
   };
   
   // Default topics if API fails
@@ -121,6 +100,18 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
 
   const handleGenerateIdeas = () => {
     setShowSuggestions(!showSuggestions);
+    
+    // If showing suggestions and we have a custom topic, fetch related AI topics
+    if (!showSuggestions && customTopic) {
+      fetchAITopics(customTopic);
+    } else if (!showSuggestions) {
+      fetchAITopics();
+    }
+  };
+
+  const handleRefreshTopics = () => {
+    // Generate fresh topics based on current input
+    fetchAITopics(customTopic);
   };
 
   const handleSubmitCustomTopic = (e: React.FormEvent) => {
@@ -134,7 +125,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
     <div className="w-full space-y-4">
       <form onSubmit={handleSubmitCustomTopic} className="space-y-2">
         <label htmlFor="topic" className="text-sm font-medium">
-          Enter a topic or choose from trending topics
+          Enter a topic or choose from AI-suggested topics
         </label>
         <div className="flex gap-2">
           <Input
@@ -158,47 +149,72 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
           onClick={handleGenerateIdeas}
           className="text-xs h-8 hover-scale"
         >
-          <TrendingUp size={14} className="mr-1" /> {showSuggestions ? "Hide Topic Ideas" : "Show Topic Ideas"}
+          {showSuggestions ? (
+            <>
+              <TrendingUp size={14} className="mr-1" /> Hide Topic Ideas
+            </>
+          ) : (
+            <>
+              <Sparkles size={14} className="mr-1" /> Show Topic Ideas
+            </>
+          )}
         </Button>
-        <span className="text-xs text-grayScale-500">Let AI suggest trending topics</span>
+        <span className="text-xs text-grayScale-500">AI-powered topic suggestions</span>
       </div>
 
       {showSuggestions && (
-        <div className="grid grid-cols-1 gap-2 mt-2 animate-fade-in sm:grid-cols-2">
-          {loadingSuggestions ? (
-            <div className="col-span-full flex items-center justify-center p-8">
-              <Loader2 className="h-6 w-6 animate-spin text-linkedBlue mr-2" />
-              <span className="text-sm text-grayScale-500">Loading trending topics...</span>
-            </div>
-          ) : (
-            trendingTopics.map((topic) => (
-              <Card
-                key={topic.id}
-                className={`cursor-pointer hover-scale ${
-                  topic.trending ? 'border-linkedBlue/20' : ''
-                }`}
-                onClick={() => handleTopicClick(topic.label)}
+        <div className="animate-fade-in space-y-2">
+          {!loadingSuggestions && (
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium">AI-Suggested Topics</span>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleRefreshTopics}
+                className="text-xs h-7"
               >
-                <CardContent className="p-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xl">{topic.icon}</span>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium truncate">{topic.label}</p>
-                      {topic.trending && (
-                        <div className="flex items-center gap-1">
-                          <TrendingUp size={12} className="text-linkedBlue" />
-                          <span className="text-xs text-linkedBlue">Trending</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  {topic.description && (
-                    <p className="text-xs text-grayScale-500 line-clamp-2">{topic.description}</p>
-                  )}
-                </CardContent>
-              </Card>
-            ))
+                <Loader2 className={`h-3 w-3 mr-1 ${loadingSuggestions ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            </div>
           )}
+          
+          <div className="grid grid-cols-1 gap-2 mt-2 sm:grid-cols-2">
+            {loadingSuggestions ? (
+              <div className="col-span-full flex items-center justify-center p-8">
+                <Loader2 className="h-6 w-6 animate-spin text-linkedBlue mr-2" />
+                <span className="text-sm text-grayScale-500">Generating topic ideas with AI...</span>
+              </div>
+            ) : (
+              topicSuggestions.map((topic) => (
+                <Card
+                  key={topic.id}
+                  className={`cursor-pointer hover-scale ${
+                    topic.trending ? 'border-linkedBlue/20' : ''
+                  }`}
+                  onClick={() => handleTopicClick(topic.label)}
+                >
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xl">{topic.icon}</span>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium truncate">{topic.label}</p>
+                        {topic.trending && (
+                          <div className="flex items-center gap-1">
+                            <TrendingUp size={12} className="text-linkedBlue" />
+                            <span className="text-xs text-linkedBlue">Trending</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {topic.description && (
+                      <p className="text-xs text-grayScale-500 line-clamp-2">{topic.description}</p>
+                    )}
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
         </div>
       )}
     </div>
