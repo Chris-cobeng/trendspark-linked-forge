@@ -7,6 +7,7 @@ import { TrendingUp, Loader2, Sparkles, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface TopicOption {
   id?: number;
@@ -26,6 +27,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [topicSuggestions, setTopicSuggestions] = useState<TopicOption[]>([]);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -37,7 +39,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
 
   useEffect(() => {
     // If suggestions are shown, load AI-generated topics
-    if (showSuggestions && topicSuggestions.length === 0) {
+    if (showSuggestions && topicSuggestions.length === 0 && !loadingSuggestions) {
       fetchTrendingTopics();
     }
   }, [showSuggestions]);
@@ -45,6 +47,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
   // Function to fetch trending topics from LinkedIn trends edge function
   const fetchTrendingTopics = async () => {
     setLoadingSuggestions(true);
+    setFetchError(null);
     
     try {
       // Call our Supabase edge function for trending topics
@@ -63,11 +66,14 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
         }));
         
         setTopicSuggestions(formattedTopics);
+        setFetchError(null);
       } else {
         throw new Error("Invalid topics data returned");
       }
     } catch (error) {
       console.error('Error fetching trending topics:', error);
+      setFetchError("Could not load trending topics");
+      
       toast({
         title: "Could not load trending topics",
         description: "Falling back to AI topic suggestions",
@@ -83,6 +89,9 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
 
   // Function to fetch AI-generated topic suggestions (fallback)
   const fetchAITopics = async (userInput?: string) => {
+    setLoadingSuggestions(true);
+    setFetchError(null);
+    
     try {
       // Call our Supabase edge function for AI topic suggestions
       const { data, error } = await supabase.functions.invoke('suggest-linkedin-topics', {
@@ -93,11 +102,14 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
       
       if (data?.topics && data.topics.length > 0) {
         setTopicSuggestions(data.topics);
+        setFetchError(null);
       } else {
         throw new Error("No topic suggestions returned");
       }
     } catch (error) {
       console.error('Error fetching AI topics:', error);
+      setFetchError("Failed to load topic suggestions");
+      
       toast({
         title: "Failed to load topics",
         description: "Could not load topic suggestions",
@@ -106,6 +118,8 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
       
       // Set empty topics array
       setTopicSuggestions([]);
+    } finally {
+      setLoadingSuggestions(false);
     }
   };
 
@@ -213,48 +227,62 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic, initialTop
               </div>
             )}
             
-            <div className="grid grid-cols-1 gap-2 mt-2 sm:grid-cols-2">
+            <ScrollArea className="h-[400px] pr-4">
               {loadingSuggestions ? (
-                <div className="col-span-full flex items-center justify-center p-8">
+                <div className="flex items-center justify-center p-8">
                   <Loader2 className="h-6 w-6 animate-spin text-linkedBlue mr-2" />
                   <span className="text-sm text-grayScale-500">Generating topic ideas with AI...</span>
                 </div>
-              ) : (
-                topicSuggestions.map((topic, index) => (
-                  <motion.div
-                    key={topic.id || index}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: index * 0.03 }}
+              ) : fetchError ? (
+                <div className="p-4 text-center bg-red-50 border border-red-100 rounded-md">
+                  <p className="text-red-600">{fetchError}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRefreshTopics}
+                    className="mt-2"
                   >
-                    <Card
-                      className={`cursor-pointer hover-scale transition-all duration-200 ${
-                        topic.trending ? 'border-linkedBlue/20' : ''
-                      }`}
-                      onClick={() => handleTopicClick(topic.label)}
+                    <RefreshCw className="h-3 w-3 mr-1" /> Try Again
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {topicSuggestions.map((topic, index) => (
+                    <motion.div
+                      key={topic.id || index}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, delay: index * 0.03 }}
                     >
-                      <CardContent className="p-3">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xl">{topic.icon}</span>
-                          <div className="flex-1">
-                            <p className="text-sm font-medium truncate">{topic.label}</p>
-                            {topic.trending && (
-                              <div className="flex items-center gap-1">
-                                <TrendingUp size={12} className="text-linkedBlue" />
-                                <span className="text-xs text-linkedBlue">Trending</span>
-                              </div>
-                            )}
+                      <Card
+                        className={`cursor-pointer hover-scale transition-all duration-200 ${
+                          topic.trending ? 'border-linkedBlue/20' : ''
+                        }`}
+                        onClick={() => handleTopicClick(topic.label)}
+                      >
+                        <CardContent className="p-3">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xl">{topic.icon}</span>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium truncate">{topic.label}</p>
+                              {topic.trending && (
+                                <div className="flex items-center gap-1">
+                                  <TrendingUp size={12} className="text-linkedBlue" />
+                                  <span className="text-xs text-linkedBlue">Trending</span>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                        {topic.description && (
-                          <p className="text-xs text-grayScale-500 line-clamp-2">{topic.description}</p>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))
+                          {topic.description && (
+                            <p className="text-xs text-grayScale-500 line-clamp-2">{topic.description}</p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
+                </div>
               )}
-            </div>
+            </ScrollArea>
           </motion.div>
         )}
       </AnimatePresence>

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   CardHeader,
@@ -16,7 +16,6 @@ import {
   TableBody,
   TableCaption,
   TableCell,
-  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -34,7 +33,7 @@ import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Clock, Trash2, Edit, CheckCircle } from "lucide-react";
 import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Post as PostType, PostInsert } from '@/integrations/supabase/types/posts';
@@ -42,9 +41,13 @@ import { useAuth } from '@/context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const PostsPage: React.FC = () => {
+  // Access URL parameters
+  const [searchParams] = useSearchParams();
+  const initialFilter = searchParams.get('filter') || 'saved';
+  
   const [posts, setPosts] = useState<PostType[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<string>('saved');
+  const [filter, setFilter] = useState<string>(initialFilter);
   const [newPost, setNewPost] = useState<PostInsert>({
     title: '',
     content: '',
@@ -52,22 +55,16 @@ const PostsPage: React.FC = () => {
     scheduled_at: null,
   });
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false); // To prevent unnecessary re-renders
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // Use useEffect to fetch posts when component mounts or filter changes
-  useEffect(() => {
-    if (user) {
-      fetchPosts(filter);
-    } else {
-      setPosts([]);
-      setLoading(false);
-    }
-  }, [filter, user]);
-
-  const fetchPosts = async (filterValue: string) => {
+  // Use memoized fetchPosts function to avoid unnecessary re-renders
+  const fetchPosts = useCallback(async (filterValue: string) => {
+    if (!user) return;
+    
     setLoading(true);
     try {
       let query = supabase.from('posts')
@@ -101,10 +98,25 @@ const PostsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, toast]);
+
+  // Use useEffect with proper dependency array
+  useEffect(() => {
+    setIsMounted(true);
+    return () => setIsMounted(false);
+  }, []);
+
+  // Separate effect for loading data
+  useEffect(() => {
+    if (isMounted && user) {
+      fetchPosts(filter);
+    }
+  }, [isMounted, filter, user, fetchPosts]);
 
   const handleFilterChange = (value: string) => {
     setFilter(value);
+    // Update URL without page refresh
+    navigate(`/posts?filter=${value}`, { replace: true });
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -149,7 +161,12 @@ const PostsPage: React.FC = () => {
           variant: "destructive",
         });
       } else {
-        setPosts(prev => [data[0] as PostType, ...prev]);
+        // Only update state if the filter matches
+        if (filter === 'all' || filter === newPost.status) {
+          setPosts(prev => [data[0] as PostType, ...prev]);
+        }
+        
+        // Reset form
         setNewPost({
           title: '',
           content: '',
@@ -218,11 +235,18 @@ const PostsPage: React.FC = () => {
           variant: "destructive",
         });
       } else {
-        setPosts(prev =>
-          prev.map(post =>
-            post.id === id ? { ...post, status, scheduled_at } : post
-          )
-        );
+        // If the filter is not 'all', and the status doesn't match the filter,
+        // remove the post from the current view
+        if (filter !== 'all' && status !== filter) {
+          setPosts(prev => prev.filter(post => post.id !== id));
+        } else {
+          setPosts(prev =>
+            prev.map(post =>
+              post.id === id ? { ...post, status, scheduled_at } : post
+            )
+          );
+        }
+        
         toast({
           title: "Success!",
           description: `Post ${status === 'scheduled' ? 'scheduled' : 'unscheduled'} successfully`,

@@ -1,5 +1,4 @@
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 
 const corsHeaders = {
@@ -32,7 +31,7 @@ serve(async (req) => {
         messages: [
           { 
             role: "system", 
-            content: "You are an expert on LinkedIn content trends and professional engagement. Generate 20 trending topics for LinkedIn posts that professionals would find valuable. For each topic, provide: 1) A short, engaging title, 2) A relevant emoji, 3) A brief description (15-20 words), and 4) If it's trending (mark the top 8 as trending). Format your response as a structured JSON array without any explanations."
+            content: "You are an expert on LinkedIn content trends and professional engagement. Generate EXACTLY 20 trending topics for LinkedIn posts that professionals would find valuable. For each topic, provide: 1) A short, engaging title, 2) A relevant emoji, 3) A brief description (15-20 words), 4) If it's trending (mark the top 8 as trending=true, the rest as trending=false). Format your response as a structured JSON array with a 'topics' key containing the array of topics. Your response MUST contain EXACTLY 20 topics."
           }
         ],
         temperature: 0.7,
@@ -50,6 +49,20 @@ serve(async (req) => {
     let parsedTopics;
     try {
       parsedTopics = JSON.parse(data.choices[0].message.content);
+      
+      // Ensure we have exactly 20 topics
+      if (!parsedTopics.topics || !Array.isArray(parsedTopics.topics) || parsedTopics.topics.length !== 20) {
+        throw new Error("API did not return exactly 20 topics");
+      }
+      
+      // Make sure all topics have the required fields
+      for (const topic of parsedTopics.topics) {
+        if (!topic.title || !topic.emoji || !topic.description || topic.trending === undefined) {
+          console.log("Invalid topic structure:", topic);
+          throw new Error("Invalid topic structure from API");
+        }
+      }
+      
     } catch (error) {
       console.error("Error parsing OpenAI response:", error);
       throw new Error("Failed to parse topics from OpenAI");

@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/AuthContext';
 import { Post as PostType } from '@/integrations/supabase/types/posts';
-import { Loader2, Calendar as CalendarIcon, Clock } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, Clock, Edit } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
@@ -22,12 +22,20 @@ const CalendarPage: React.FC = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    let mounted = true;
+    
     if (user) {
       fetchScheduledPosts();
     } else {
-      setScheduledPosts([]);
-      setLoading(false);
+      if (mounted) {
+        setScheduledPosts([]);
+        setLoading(false);
+      }
     }
+    
+    return () => {
+      mounted = false;
+    };
   }, [user]);
 
   useEffect(() => {
@@ -97,6 +105,24 @@ const CalendarPage: React.FC = () => {
     });
   };
 
+  // Count posts for a specific date
+  const getPostCountForDate = (day: Date) => {
+    return scheduledPosts.filter(post => {
+      if (!post.scheduled_at) return false;
+      
+      const postDate = new Date(post.scheduled_at);
+      return (
+        postDate.getDate() === day.getDate() &&
+        postDate.getMonth() === day.getMonth() &&
+        postDate.getFullYear() === day.getFullYear()
+      );
+    }).length;
+  };
+
+  const handleViewPost = (postId: string) => {
+    navigate(`/posts?id=${postId}`);
+  };
+
   // If user is not logged in, redirect to login
   if (!user) {
     return (
@@ -109,11 +135,11 @@ const CalendarPage: React.FC = () => {
   }
 
   return (
-    <div className="w-full max-w-6xl mx-auto">
+    <div className="w-full max-w-7xl mx-auto">
       <h1 className="text-3xl font-bold mb-6">Content Calendar</h1>
       
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-sm border">
+      <div className="grid grid-cols-1 gap-6">
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
           <h2 className="text-xl font-semibold mb-4">Schedule Posts</h2>
           <AnimatePresence mode="wait">
             {loading ? (
@@ -131,174 +157,136 @@ const CalendarPage: React.FC = () => {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                className="flex justify-center"
+                className="flex flex-col"
               >
-                <Calendar
-                  mode="single"
-                  selected={date}
-                  onSelect={setDate}
-                  className="rounded-md border p-3"
-                  modifiers={{
-                    booked: (date) => hasScheduledPost(date),
-                  }}
-                  modifiersStyles={{
-                    booked: { 
-                      backgroundColor: 'rgba(30, 174, 219, 0.1)', 
-                      fontWeight: 'bold', 
-                      color: '#1EAEDB',
-                      transform: 'scale(1.1)' 
-                    }
-                  }}
-                  components={{
-                    DayContent: ({ date }) => (
-                      <div className="relative flex items-center justify-center h-full">
-                        <span>{date.getDate()}</span>
-                        {hasScheduledPost(date) && (
-                          <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-linkedBlue rounded-full"></div>
-                        )}
-                      </div>
-                    ),
-                  }}
-                />
+                <div className="w-full flex justify-center mb-4">
+                  <Calendar
+                    mode="single"
+                    selected={date}
+                    onSelect={setDate}
+                    className="rounded-md border p-3 w-full max-w-md"
+                    modifiers={{
+                      booked: (date) => hasScheduledPost(date),
+                    }}
+                    modifiersStyles={{
+                      booked: { 
+                        backgroundColor: 'rgba(30, 174, 219, 0.1)', 
+                        fontWeight: 'bold', 
+                        color: '#1EAEDB',
+                        transform: 'scale(1.05)' 
+                      }
+                    }}
+                    components={{
+                      DayContent: ({ date }) => {
+                        const postCount = getPostCountForDate(date);
+                        
+                        return (
+                          <div className="relative flex items-center justify-center h-full">
+                            <span>{date.getDate()}</span>
+                            {postCount > 0 && (
+                              <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2">
+                                <div className="flex gap-0.5">
+                                  {[...Array(Math.min(postCount, 3))].map((_, i) => (
+                                    <div 
+                                      key={i} 
+                                      className="w-1 h-1 bg-linkedBlue rounded-full"
+                                    />
+                                  ))}
+                                  {postCount > 3 && (
+                                    <div className="w-1 h-1 bg-linkedBlue/50 rounded-full" />
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      },
+                    }}
+                  />
+                </div>
+                
+                <div className="mt-6">
+                  <h3 className="text-lg font-medium mb-2 flex items-center">
+                    <CalendarIcon className="h-4 w-4 mr-2 text-linkedBlue" />
+                    {date ? format(date, "MMMM d, yyyy") : "Select a Date"}
+                  </h3>
+                  <AnimatePresence>
+                    {selectedDatePosts.length > 0 ? (
+                      <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="space-y-3"
+                      >
+                        {selectedDatePosts.map((post) => (
+                          <motion.div
+                            key={post.id}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 10 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <Card className="bg-linkedBlue/5 border-linkedBlue/20 hover:shadow-md transition-shadow">
+                              <CardContent className="p-4">
+                                <div className="flex justify-between items-start">
+                                  <div className="flex-1">
+                                    <p className="font-medium">{post.title}</p>
+                                    <p className="text-sm text-grayScale-500 mt-1 line-clamp-2">{post.content}</p>
+                                    <div className="flex items-center mt-2 text-xs text-linkedBlue">
+                                      <Clock size={12} className="mr-1" /> 
+                                      Scheduled for {format(new Date(post.scheduled_at!), "h:mm a")}
+                                    </div>
+                                  </div>
+                                  <Button
+                                    variant="outline" 
+                                    size="sm"
+                                    onClick={() => handleViewPost(post.id)}
+                                    className="ml-2"
+                                  >
+                                    <Edit size={14} className="mr-1" /> View
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          </motion.div>
+                        ))}
+                      </motion.div>
+                    ) : date ? (
+                      <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="bg-grayScale-50 rounded-lg text-center p-8"
+                      >
+                        <p className="text-grayScale-500 text-sm mb-3">
+                          No posts scheduled for this date.
+                        </p>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => navigate('/dashboard')}
+                          className="text-sm"
+                        >
+                          Generate a new post
+                        </Button>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
-          <div className="mt-6">
-            <h3 className="text-lg font-medium mb-2">
-              {date ? format(date, "MMMM d, yyyy") : "Select a Date"}
-            </h3>
-            <AnimatePresence>
-              {selectedDatePosts.length > 0 ? (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="space-y-3"
-                >
-                  {selectedDatePosts.map((post) => (
-                    <motion.div
-                      key={post.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 10 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      <Card className="bg-linkedBlue/5 border-linkedBlue/20">
-                        <CardContent className="p-4">
-                          <p className="font-medium">{post.title}</p>
-                          <p className="text-sm text-grayScale-500 mt-1 line-clamp-2">{post.content}</p>
-                          <div className="flex items-center mt-2 text-xs text-linkedBlue">
-                            <Clock size={12} className="mr-1" /> 
-                            Scheduled for {format(new Date(post.scheduled_at!), "h:mm a")}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
-                </motion.div>
-              ) : date ? (
-                <motion.p 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="text-grayScale-500 text-sm p-3"
-                >
-                  No posts scheduled for this date. Visit the Posts page to schedule content.
-                </motion.p>
-              ) : null}
-            </AnimatePresence>
-          </div>
         </div>
         
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <CardHeader className="p-0 pb-4">
-            <CardTitle className="text-xl font-semibold">Scheduled Posts</CardTitle>
-          </CardHeader>
-          
-          <AnimatePresence mode="wait">
-            {loading ? (
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex justify-center items-center p-12"
-              >
-                <Loader2 className="h-6 w-6 animate-spin text-linkedBlue" />
-              </motion.div>
-            ) : scheduledPosts.length > 0 ? (
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="space-y-4"
-              >
-                {scheduledPosts.slice(0, 5).map((post, index) => (
-                  <motion.div
-                    key={post.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2, delay: index * 0.05 }}
-                  >
-                    <Card className="hover-scale cursor-pointer transition-all duration-200">
-                      <CardContent className="p-4">
-                        <p className="font-medium text-linkedBlue">
-                          {post.scheduled_at && format(new Date(post.scheduled_at), "EEE, MMM d")}
-                        </p>
-                        <p className="text-sm text-grayScale-500 truncate mt-1">{post.title}</p>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
-                
-                {scheduledPosts.length > 5 && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="text-center pt-2"
-                  >
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => navigate('/posts?filter=scheduled')}
-                      className="text-xs"
-                    >
-                      View {scheduledPosts.length - 5} more scheduled posts
-                    </Button>
-                  </motion.div>
-                )}
-              </motion.div>
-            ) : (
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="text-center py-8 text-grayScale-400"
-              >
-                <CalendarIcon className="h-12 w-12 mx-auto text-grayScale-300 mb-2" />
-                <p className="mb-4">No scheduled posts.</p>
-                <Button 
-                  onClick={() => navigate('/dashboard')} 
-                  variant="outline" 
-                  className="text-sm"
-                >
-                  Generate a post
-                </Button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+        <div className="mt-6 p-4 bg-linkedBlue/5 border border-linkedBlue/10 rounded-md">
+          <h3 className="text-sm font-medium mb-2 flex items-center">
+            <CalendarIcon className="h-4 w-4 mr-2 text-linkedBlue" /> Pro Tip
+          </h3>
+          <p className="text-sm text-grayScale-600">
+            Schedule posts during peak engagement hours—early mornings (7-9am) 
+            and early evenings (5-7pm)—to maximize visibility. Click on a date with scheduled posts to view and manage them.
+          </p>
         </div>
-      </div>
-      
-      <div className="mt-6 p-4 bg-linkedBlue/5 border border-linkedBlue/10 rounded-md">
-        <h3 className="text-sm font-medium mb-2 flex items-center">
-          <CalendarIcon className="h-4 w-4 mr-2 text-linkedBlue" /> Pro Tip
-        </h3>
-        <p className="text-sm text-grayScale-600">
-          Schedule posts during peak engagement hours—early mornings (7-9am) 
-          and early evenings (5-7pm)—to maximize visibility.
-        </p>
       </div>
     </div>
   );

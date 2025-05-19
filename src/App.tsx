@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import Layout from "./components/Layout";
 import Home from "./pages/Home";
@@ -12,8 +12,18 @@ import PostsPage from "./pages/PostsPage";
 import CalendarPage from "./pages/CalendarPage";
 import NotFound from "./pages/NotFound";
 import { useAuth } from "./context/AuthContext";
+import { useEffect } from "react";
 
-const queryClient = new QueryClient();
+// Configure React Query to reduce unnecessary re-renders
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60000, // 1 minute
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 // AuthGuard component to protect routes
 const AuthGuard = ({ children }: { children: React.ReactNode }) => {
@@ -38,29 +48,17 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-// We separate the AppRoutes to avoid the useAuth hook being called outside of AuthProvider
-const AppRoutes = () => {
-  const { user, loading } = useAuth();
-  
-  // Don't render routes until initial auth check is done
-  if (loading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center">
-        <div className="flex flex-col items-center space-y-4">
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-linkedBlue border-t-transparent"></div>
-          <p className="text-lg font-medium text-gray-700">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+// Page transition component to handle animations
+const PageTransition = ({ children }: { children: React.ReactNode }) => {
+  const location = useLocation();
   
   return (
-    <AnimatePresence mode="wait">
-      <Routes>
+    <AnimatePresence mode="wait" initial={false}>
+      <Routes location={location} key={location.pathname}>
         {/* Redirect based on auth status */}
         <Route 
           path="/" 
-          element={user ? <Navigate to="/dashboard" replace /> : <Home />} 
+          element={<Home />} 
         />
         
         {/* Protected routes */}
@@ -83,6 +81,32 @@ const AppRoutes = () => {
       </Routes>
     </AnimatePresence>
   );
+};
+
+// We separate the AppRoutes to avoid the useAuth hook being called outside of AuthProvider
+const AppRoutes = () => {
+  const { user, loading } = useAuth();
+  
+  // Redirect authenticated users to dashboard
+  useEffect(() => {
+    if (user && window.location.pathname === '/') {
+      window.history.pushState({}, '', '/dashboard');
+    }
+  }, [user]);
+  
+  // Don't render routes until initial auth check is done
+  if (loading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-linkedBlue border-t-transparent"></div>
+          <p className="text-lg font-medium text-gray-700">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  return <PageTransition />;
 };
 
 const App = () => {
