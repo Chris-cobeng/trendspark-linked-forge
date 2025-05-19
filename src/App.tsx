@@ -12,15 +12,17 @@ import PostsPage from "./pages/PostsPage";
 import CalendarPage from "./pages/CalendarPage";
 import NotFound from "./pages/NotFound";
 import { useAuth } from "./context/AuthContext";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
-// Configure React Query to reduce unnecessary re-renders
+// Configure React Query with more reliable cache options to reduce unnecessary re-renders
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 60000, // 1 minute
+      staleTime: 300000, // 5 minutes - increased to prevent frequent refetches
       refetchOnWindowFocus: false,
       retry: 1,
+      refetchOnReconnect: false, // Disable refetch on reconnect to improve stability
+      refetchOnMount: true,
     },
   },
 });
@@ -28,9 +30,19 @@ const queryClient = new QueryClient({
 // AuthGuard component to protect routes
 const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   
-  if (loading) {
-    // Show loading state instead of redirecting during initial load
+  useEffect(() => {
+    // Set initial load to false after a delay to prevent quick flashes
+    if (!loading) {
+      const timer = setTimeout(() => {
+        setIsInitialLoad(false);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [loading]);
+  
+  if (loading || isInitialLoad) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <div className="flex flex-col items-center space-y-4">
@@ -48,7 +60,7 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-// Page transition component to handle animations
+// Page transition component with improved stability
 const PageTransition = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
   
@@ -64,7 +76,7 @@ const PageTransition = ({ children }: { children: React.ReactNode }) => {
         {/* Protected routes */}
         <Route path="/dashboard" element={
           <AuthGuard>
-            <Layout><GeneratePage /></Layout>
+            <Layout>{children}</Layout>
           </AuthGuard>
         } />
         <Route path="/posts" element={
@@ -86,16 +98,25 @@ const PageTransition = ({ children }: { children: React.ReactNode }) => {
 // We separate the AppRoutes to avoid the useAuth hook being called outside of AuthProvider
 const AppRoutes = () => {
   const { user, loading } = useAuth();
+  const [isStable, setIsStable] = useState(false);
   
-  // Redirect authenticated users to dashboard
+  // Improved stability for redirect
   useEffect(() => {
-    if (user && window.location.pathname === '/') {
-      window.history.pushState({}, '', '/dashboard');
+    // Only redirect when auth has fully loaded and stabilized
+    if (!loading) {
+      // Set a delay to ensure auth state is stable
+      const timer = setTimeout(() => {
+        setIsStable(true);
+        if (user && window.location.pathname === '/') {
+          window.history.pushState({}, '', '/dashboard');
+        }
+      }, 500);
+      return () => clearTimeout(timer);
     }
-  }, [user]);
+  }, [user, loading]);
   
-  // Don't render routes until initial auth check is done
-  if (loading) {
+  // Don't render routes until initial auth check is done and state is stable
+  if (loading || !isStable) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <div className="flex flex-col items-center space-y-4">
@@ -106,7 +127,7 @@ const AppRoutes = () => {
     );
   }
   
-  return <PageTransition />;
+  return <PageTransition><GeneratePage /></PageTransition>;
 };
 
 const App = () => {
